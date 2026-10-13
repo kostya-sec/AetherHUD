@@ -35,3 +35,6 @@ desktop.ini
 .idea/
 .vscode/
 *.swp
+
+# research subagent worktrees
+.worktrees/
