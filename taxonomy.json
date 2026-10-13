@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "meta": {
+    "description": "2+1 维分类体系：L1/L2 为树状互斥场景，L3 为正交筛选标签池"
+  },
+  "global_l3_tags": {
+    "format_tags": [
+      { "id": "tag_tool", "name": "工具", "color": "#3B82F6" },
+      { "id": "tag_tutorial", "name": "教程", "color": "#10B981" },
+      { "id": "tag_prompt", "name": "提示词", "color": "#8B5CF6" },
+      { "id": "tag_workflow", "name": "工作流", "color": "#EC4899" },
+      { "id": "tag_asset", "name": "素材/资源", "color": "#F59E0B" }
+    ],
+    "media_types": [
+      { "id": "type_link", "name": "链接" },
+      { "id": "type_video", "name": "视频" },
+      { "id": "type_article", "name": "图文" }
+    ]
+  },
+  "taxonomy": [
+    {
+      "id": "l1_content",
+      "name": "01 内容与表达",
+      "icon": "palette",
+      "children": [
+        {
+          "id": "l2_writing",
+          "name": "文本与写作",
+          "l3_preset_tags": ["文案", "长文", "小说", "翻译", "Prompt框架"]
+        },
+        {
+          "id": "l2_image",
+          "name": "图像与设计",
+          "l3_preset_tags": ["Midjourney", "StableDiffusion", "ComfyUI", "风格词", "修图", "UI设计"]
+        },
+        {
+          "id": "l2_video_audio",
+          "name": "视频与音频",
+          "l3_preset_tags": ["剪辑", "数字人", "AI配音", "Suno", "运镜脚本", "动效"]
+        },
+        {
+          "id": "l2_social_media",
+          "name": "社交媒体运营",
+          "l3_preset_tags": ["小红书", "Twitter/X", "公众号", "出海分发", "爆款拆解"]
+        }
+      ]
+    },
+    {
+      "id": "l1_productivity",
+      "name": "02 效率与工作流",
+      "icon": "zap",
+      "children": [
+        {
+          "id": "l2_km",
+          "name": "信息与知识管理",
+          "l3_preset_tags": ["搜索", "笔记系统", "Obsidian", "Notion", "阅读批注"]
+        },
+        {
+          "id": "l2_automation",
+          "name": "流程与自动化",
+          "l3_preset_tags": ["Make", "Zapier", "飞书表格", "自动化脚本", "RPA"]
+        },
+        {
+          "id": "l2_personal_ops",
+          "name": "个人看板与管理",
+          "l3_preset_tags": ["待办清单", "时间管理", "复盘", "项目管理"]
+        }
+      ]
+    },
+    {
+      "id": "l1_tech",
+      "name": "03 技术与工程",
+      "icon": "terminal",
+      "children": [
+        {
+          "id": "l2_prompt_agent",
+          "name": "提示工程与智能体",
+          "l3_preset_tags": ["Coze", "Dify", "Agent架构", "系统级Prompt", "FunctionCalling"]
+        },
+        {
+          "id": "l2_coding",
+          "name": "编程与低代码",
+          "l3_preset_tags": ["Cursor", "Python", "前端组件", "Rust", "API集成"]
+        },
+        {
+          "id": "l2_ops_infra",
+          "name": "部署与环境",
+          "l3_preset_tags": ["Docker", "NAS", "本地大模型", "Ollama", "开源项目"]
+        }
+      ]
+    },
+    {
+      "id": "l1_biz",
+      "name": "04 商业与认知",
+      "icon": "trending-up",
+      "children": [
+        {
+          "id": "l2_biz_model",
+          "name": "商业模式与副业",
+          "l3_preset_tags": ["变现案例", "独立开发", "海外出海", "冷启动"]
+        },
+        {
+          "id": "l2_insight",
+          "name": "行业观察与研报",
+          "l3_preset_tags": ["AI趋势", "深度思考", "行业图谱", "财报分析"]
+        }
+      ]
+    }
+  ]
+}
