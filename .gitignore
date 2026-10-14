@@ -38,3 +38,7 @@ desktop.ini
 
 # research subagent worktrees
 .worktrees/
+
+# 外部参考 demo（含其可能带入的 env，严禁入库）
+demo-gemini2/
+.demo-gemini2/
