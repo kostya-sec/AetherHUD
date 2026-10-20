@@ -197,7 +197,7 @@ CREATE INDEX ix_pipeline_jobs_lease ON pipeline_jobs (lease_until)     WHERE sta
 ```
 
 - 同一 `entry_id` 的 fetch 与 classify 是两行（串行插入），故唯一约束是 `(entry_id, stage)`。
-- `entries.pipeline_status` 保持为**对外状态**；jobs 表承担重试计数/下次时间/租约。状态派生与失败语义由 #11 定义，实现须在同一事务里更新两处。
+- `entries.pipeline_status` 保持为**对外状态**；jobs 表承担重试计数/下次时间/租约。状态派生、退避、断网挂起与重启恢复语义见 [pipeline-worker.md](./pipeline-worker.md)（#11 决议），实现须在同一事务里更新两处。
 
 ### 3.8 settings（非机密配置）与 meta（内部元数据）
 
