@@ -17,8 +17,10 @@ Tauri `app_data_dir`（实现后以 `tauri.conf.json` 的 identifier 为准）�
 | Windows | `%APPDATA%\<identifier>\eval\sets\` |
 | macOS | `~/Library/Application Support/<identifier>/eval/sets/` |
 
-- 主评测集：`eval/sets/2026-10-v1.jsonl`（200 条；`split` 字段区分 visible / blind）
-- 边界集：`eval/sets/2026-10-v1.boundary.jsonl`（不参与门线、不计入 200 条）
+- 当前版本：**`2026-10-v2`**（#22 跨类歧义复核后；主集 193 条 = visible 144 + blind 49）；上一版 `2026-10-v1` 已冻结、保留只读
+- 主评测集：`eval/sets/<eval_set_version>.jsonl`（`split` 字段区分 visible / blind）
+- 边界集：`eval/sets/<eval_set_version>.boundary.jsonl`（不参与门线、不计入主集条数）
+- 版本复核记录：[gold-review-2026-10-v2.md](./gold-review-2026-10-v2.md)（脱敏；真实标题/URL 只在本地 `eval/sets/<version>.changelog.*`）
 - 报告：`eval/reports/`；纠偏候选：`eval/candidates/`（均由 #21 的工具生成）
 
 ## 2. 字段（#14 §3.7）
@@ -86,6 +88,7 @@ node scripts/eval/validate-eval-set.mjs --file "<...>" --json
 
 - 校验器的字段规则与层次配额是 #21 `aether-eval` 的输入契约；两边口径不一致时以本文件与 #14 规格为准。
 - 评测集版本、taxonomy 版本写进每条记录，报告必须回显两个版本并做可比性校验。
+- **跨评测集版本不比较差值**（#14 §3.6）：v2 与 v1 的分母与组成都不同，v1 基线保留、v2 单独建基线。
 
 ## 7. 从收藏导出导入候选
 
