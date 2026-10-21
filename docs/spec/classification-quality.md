@@ -174,6 +174,10 @@ cargo run --release --bin aether-eval -- \
   [--limit N] [--report <path>]
 ```
 
+> 实现位置（2026-10-21，本票）：暂为独立 crate `crates/aether-eval`（`cargo run -p aether-eval -- ...`，
+> 见其 README），共享分类路径在 `crates/aether-classifier`；待 `src-tauri` 脚手架落地后迁入
+> `src-tauri/src/bin/aether-eval.rs`，CLI 参数与本节一致。
+
 - **复用生产分类路径**：同一 prompt、同一输出校验、同一归一化、同一失败判定；不允许「评测专用分类器」与线上不一致。
 - **读生效分类树**（#18）：读 `app_data_dir/taxonomy.effective.json`（缺失时回退底表 `taxonomy.json`），自建 L2 的 id 与名称参与评测。
 - 固定条件：provider、model、prompt_version、最低 temperature（0 或 provider 等价设置）；每次运行记录这些参数。
@@ -293,18 +297,18 @@ Markdown + JSON 报告，至少包含：
 
 ## 9. 验收清单（实现时逐项勾）
 
-- [ ] 评测 CLI 跑通：读本地评测集、复用生产分类路径、输出 Markdown + JSON。
-- [ ] 指标与 §2.3 一致：L1/L2 准确率、L2|L1、形态 micro-F1、弃权率、可用性、分组/分难度。
-- [ ] 可见集 / 盲测集字段与拆分落实，盲测集不用于调参。
-- [ ] 首批 200 条金标集：每 L2 ≥10、每 L1 ≥40、难例 ≥20%、媒体形态覆盖。
-- [ ] 报告含混淆矩阵、错例 top20、版本校验、同条件基线对比。
-- [ ] 纠偏候选生成：corrections + entries → JSONL；硬删条目跳过并计数。
-- [ ] few-shot 池与评测集查重脚本可跑，无重叠。
-- [ ] taxonomy 换版后重映射脚本可跑，评测集版本与报告版本一致。
-- [ ] 评测 CLI 读生效分类树（`taxonomy.effective.json`），报告含底表/生效双版本与未覆盖节点。
-- [ ] 纠偏候选按 `entry_id` 去重（采纳建议会写两条 corrections）。
+- [x] 评测 CLI 跑通：读本地评测集、复用生产分类路径、输出 Markdown + JSON（`crates/aether-eval` + `crates/aether-classifier`）。
+- [x] 指标与 §2.3 一致：L1/L2 准确率、L2|L1、形态 micro-F1、弃权率、可用性、分组/分难度。
+- [x] 可见集 / 盲测集字段与拆分落实，盲测集不用于调参（本次只跑可见集；盲测集待候选定稿后首次运行）。
+- [ ] 首批 200 条金标集：每 L2 ≥10、每 L1 ≥40、难例 ≥20%、媒体形态覆盖（已知缺口见 #20：视频 13%、6 个 L2 未达 10，未编造补位）。
+- [x] 报告含混淆矩阵、错例 top20、版本校验、同条件基线对比。
+- [x] 纠偏候选生成：corrections + entries → JSONL；硬删条目跳过并计数。
+- [x] few-shot 池与评测集查重脚本可跑，无重叠（主集 0 重叠；3 条示例来自边界集，按 #19 设计并在报告后附警告）。
+- [ ] taxonomy 换版后重映射脚本可跑，评测集版本与报告版本一致（报告侧 `merged_into` 重映射已实现；独立重映射脚本待 #14 §7.2 非加法变更时补）。
+- [x] 评测 CLI 读生效分类树（`taxonomy.effective.json`），报告含底表/生效双版本与未覆盖节点。
+- [x] 纠偏候选按 `entry_id` 去重（采纳建议会写两条 corrections）。
 - [ ] PRD / GLOSSARY 更新完成（本票已做）。
-- [ ] 首版分类器实现后跑一次可见集，记录基线报告。
+- [x] 首版分类器实现后跑一次可见集，记录基线报告（qwen-flash / prompt v1，本地报告不入 git）。
 
 ## 10. 未决与后续
 

@@ -101,3 +101,33 @@ node scripts/eval/import-collection.mjs \
 - 自动去重（canonical URL、去 `utm_*` 等跟踪参数）、按域名推断 `media_type`（视频站 → `video`，其余 → `link`）。
 - 候选字段：`entry_id / title / url / media_type / source / notes`；`gold`、`difficulty`、`split` 在标注阶段补齐，**候选文件不得直接当评测集**。
 - 收藏导出与候选文件都含真实内容，只放本地（`.local/` 或 `app_data_dir`），不入 git。
+
+## 8. 评测执行（#21 实现）
+
+评测 CLI 已落地为独立 crate `crates/aether-eval`（共享分类路径在 `crates/aether-classifier`），
+完整用法见 [crates/aether-eval/README.md](../../crates/aether-eval/README.md)。开发期把
+`app_data_dir` 指向仓库内 `.local/`（结构与上文一致）：
+
+```bash
+# 可见集（日常回归 / 首版基线）
+target/release/aether-eval.exe --data-dir .local \
+  --set visible --provider dashscope --model qwen-flash --prompt-version 1 \
+  --env-file .local/keys.env
+
+# 边界集（只观察弃权 / 建议，不参与门线）
+target/release/aether-eval.exe --data-dir .local \
+  --set boundary --provider dashscope --model qwen-flash --prompt-version 1 \
+  --env-file .local/keys.env
+
+# few-shot 与评测集查重（主集重叠时退出码 1）
+target/release/aether-eval.exe dedupe \
+  --fewshot .local/classifier/fewshot.json \
+  --set .local/eval/sets/2026-10-v1.jsonl \
+  --boundary .local/eval/sets/2026-10-v1.boundary.jsonl
+
+# 纠偏候选（corrections JOIN entries）
+target/release/aether-eval.exe --data-dir .local candidates --out .local/eval/candidates
+```
+
+报告落 `<data_dir>/eval/reports/<timestamp>.{json,md,items.jsonl,feature-review.jsonl}`；
+基线索引 `baseline-index.json` 由工具维护，基线报告不可覆盖（#14 §4.4）。

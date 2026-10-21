@@ -10,6 +10,8 @@
 secrets.*
 
 # ===== Rust / Tauri =====
+/target/
+**/target/
 src-tauri/target/
 src-tauri/gen/
 **/*.rs.bk

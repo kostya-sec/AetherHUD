@@ -1,0 +1,42 @@
+[
+  {
+    "entry_id": "01J00000000000000000000000",
+    "input": {
+      "title": "<示例条目标题（脱敏占位）>",
+      "url": "example.com/<path>",
+      "media_type": "link",
+      "body_excerpt": "<正文前 300 字内的脱敏占位内容>"
+    },
+    "output": {
+      "l1_id": "l1_tech",
+      "l2_id": "l2_coding",
+      "format_tags": ["tag_tool"],
+      "feature_tags": ["<专有名词>"],
+      "suggestion": null
+    },
+    "note": "模板示例：正常分类样例；真实 few-shot 只存本地 app_data_dir/classifier/fewshot.json，不入 git"
+  },
+  {
+    "entry_id": null,
+    "input": {
+      "title": "<无法归类的条目标题（脱敏占位）>",
+      "url": "",
+      "media_type": "link",
+      "body_excerpt": "<信息不足 / 属分类树未覆盖主题的脱敏占位内容>"
+    },
+    "output": {
+      "l1_id": "l1_inbox",
+      "l2_id": "l2_manual_review",
+      "format_tags": ["tag_tutorial"],
+      "feature_tags": [],
+      "suggestion": {
+        "nearest_l2_id": "l2_km",
+        "new_l2": {
+          "parent_l1_id": "l1_productivity",
+          "name": "<2~10 字分类名>"
+        }
+      }
+    },
+    "note": "模板示例：弃权 + 分类建议（#18 §2.2）；真实样本不入 git"
+  }
+]

@@ -1,0 +1,17 @@
+[package]
+name = "aether-classifier"
+description = "AetherHUD 分类路径：分类树注入、prompt 组装、输出校验、provider 调用与重试（生产与 aether-eval 共用）"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
+unicode-normalization = { workspace = true }
+fastrand = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
