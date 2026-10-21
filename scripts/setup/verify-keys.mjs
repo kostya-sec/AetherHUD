@@ -74,6 +74,7 @@ const cfg = {
   feishuAppId: pick('FEISHU_APP_ID'),
   feishuAppSecret: pick('FEISHU_APP_SECRET'),
   feishuBaseUrl: pick('FEISHU_BASE_URL', 'FEISHU_BITABLE_URL'),
+  dashscopeKey: pick('DASHSCOPE_API_KEY', 'BAILIAN_API_KEY', 'QWEN_API_KEY'),
 };
 
 /* ------------------------------- helpers ------------------------------ */
@@ -220,6 +221,82 @@ async function probeYouTube() {
       reason,
       hint: (reason && hintByReason[reason]) || 'see error below',
       errorMessage: json && json.error ? json.error.message : text.slice(0, 300),
+    };
+  } catch (err) {
+    return { status: 'fail', error: String(err && err.message ? err.message : err) };
+  }
+}
+
+/* --------------------------- DashScope / 百炼 -------------------------- */
+
+const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+
+async function probeDashscope() {
+  if (!cfg.dashscopeKey) return { status: 'skipped', reason: 'DASHSCOPE_API_KEY not set' };
+  try {
+    const { res, text, ms } = await timedFetch(
+      DASHSCOPE_BASE + '/models',
+      { headers: { Authorization: 'Bearer ' + cfg.dashscopeKey } },
+      20000,
+    );
+    let json = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      /* keep null */
+    }
+    if (res.status === 200 && json && Array.isArray(json.data)) {
+      const ids = json.data.map((m) => m.id);
+      return {
+        status: 'ok',
+        mode: 'models',
+        httpStatus: 200,
+        latencyMs: ms,
+        endpoint: DASHSCOPE_BASE,
+        modelCount: ids.length,
+        qwenModels: ids.filter((id) => /qwen/i.test(id)).slice(0, 8),
+      };
+    }
+    // 有些账户的 /models 不开放：退一步真跑一次最便宜的 chat 调用
+    const chat = await timedFetch(
+      DASHSCOPE_BASE + '/chat/completions',
+      {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + cfg.dashscopeKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'qwen-flash',
+          messages: [{ role: 'user', content: 'reply with: ok' }],
+          max_tokens: 8,
+        }),
+      },
+      30000,
+    );
+    let cj = null;
+    try {
+      cj = JSON.parse(chat.text);
+    } catch {
+      /* keep null */
+    }
+    if (chat.res.status === 200 && cj && cj.choices) {
+      return {
+        status: 'ok',
+        mode: 'chat',
+        httpStatus: 200,
+        latencyMs: chat.ms,
+        endpoint: DASHSCOPE_BASE,
+        model: cj.model,
+        sampleOutput: (cj.choices[0].message.content || '').slice(0, 40),
+      };
+    }
+    const msg = (json && json.error && json.error.message) || (cj && cj.error && cj.error.message) || text.slice(0, 200);
+    return {
+      status: 'fail',
+      httpStatus: res.status,
+      error: msg,
+      hint:
+        res.status === 401
+          ? 'DASHSCOPE_API_KEY invalid / wrong region (cn: dashscope.aliyuncs.com, intl: dashscope-intl.aliyuncs.com)'
+          : 'check key, region and model availability',
     };
   } catch (err) {
     return { status: 'fail', error: String(err && err.message ? err.message : err) };
@@ -374,6 +451,7 @@ log('  YouTube key  : ' + mask(cfg.youtubeKey));
 log('  Feishu app_id: ' + mask(cfg.feishuAppId));
 log('  Feishu secret: ' + mask(cfg.feishuAppSecret));
 log('  Feishu URL   : ' + (cfg.feishuBaseUrl || '(not set)'));
+log('  Bailian key  : ' + mask(cfg.dashscopeKey));
 log('');
 
 if (run('jina')) {
@@ -399,6 +477,21 @@ if (run('youtube')) {
   if (results.youtube.sampleTitle) log('     sample: ' + results.youtube.sampleTitle);
   if (results.youtube.hint) log('     hint: ' + results.youtube.hint);
   if (results.youtube.error) log('     error: ' + results.youtube.error);
+}
+
+if (run('dashscope')) {
+  log('[dashscope] probing OpenAI-compatible /models ...');
+  results.dashscope = await probeDashscope();
+  log('  -> ' + results.dashscope.status +
+      (results.dashscope.httpStatus ? ' HTTP ' + results.dashscope.httpStatus : '') +
+      (results.dashscope.latencyMs ? ' ' + results.dashscope.latencyMs + 'ms' : ''));
+  if (results.dashscope.mode) log('     mode: ' + results.dashscope.mode);
+  if (results.dashscope.modelCount !== undefined) log('     models listed: ' + results.dashscope.modelCount);
+  if (results.dashscope.qwenModels) log('     qwen models: ' + results.dashscope.qwenModels.join(', '));
+  if (results.dashscope.model) log('     model: ' + results.dashscope.model);
+  if (results.dashscope.sampleOutput) log('     output: ' + results.dashscope.sampleOutput);
+  if (results.dashscope.hint) log('     hint: ' + results.dashscope.hint);
+  if (results.dashscope.error) log('     error: ' + results.dashscope.error);
 }
 
 if (run('feishu')) {
@@ -428,6 +521,7 @@ const report = {
     jina: results.jina && results.jina.status,
     youtube: results.youtube && results.youtube.status,
     feishu: results.feishu && results.feishu.status,
+    dashscope: results.dashscope && results.dashscope.status,
   },
 };
 

@@ -1,6 +1,6 @@
 # API 凭证与密钥存放（API Keys & Keychain Spec v1）
 
-> 状态：**进行中**（2026-10-21，等用户开通并验证）
+> 状态：**进行中**（2026-10-21：飞书 ✅ 已通；YouTube ⏸ 跳过；Jina ⬜ 网络待验；百炼 ⬜ 待开）
 > 来源票：[任务：开通 Jina / YouTube Data API / 飞书自建应用凭证](https://github.com/kostya-sec/AetherHUD/issues/15)
 > 依赖决议：#5（飞书多维表格同步）、#2（YouTube Data API）、#3（Jina Reader）、#10（settings 表与 key_ref）、#18（评测需要真实 provider）
 > 一句话：v1 要三个外部凭证，全部存进 **OS Keychain**（Windows 凭据管理器 / macOS 钥匙串），数据库和配置文件里只存"指针"，永不明文落盘。
@@ -12,12 +12,13 @@
 | 1 | 飞书开放平台（自建应用） | App ID | ✅ 必填 | 多维表格增量同步（#5） | `feishu.app_id` |
 | 2 | 飞书开放平台（自建应用） | App Secret | ✅ 必填 | 换 `tenant_access_token` | `feishu.app_secret` |
 | 3 | 飞书多维表格 | Base app_token + table_id | ✅ 必填 | 同步源定位（可非秘密） | `feishu.app_token` / settings |
-| 4 | YouTube Data API v3 | API Key | ✅ 必填 | 视频元数据（#2） | `youtube.api_key` |
-| 5 | Jina Reader | API Key | ⬜ 可选 | 网页正文抓取 L2 路径（#3） | `jina.api_key` |
-| 6 | 分类 Provider（OpenAI 兼容） | API Key | ⬜ 本票不含 | 分类引擎 + 评测（#14/#21） | `classifier.api_key` |
+| 4 | YouTube Data API v3 | API Key | ⏸ 暂不配（2026-10-21 决定） | 视频元数据（#2）；降级为 oEmbed 兜底 | `youtube.api_key` |
+| 5 | Jina Reader | API Key | ⬜ 可选（网络待验） | 网页正文抓取 L2 路径（#3） | `jina.api_key` |
+| 6 | 阿里百炼 DashScope（OpenAI 兼容） | API Key | ✅ 必填 | 分类引擎 + 评测（#14/#21） | `classifier.api_key` |
 
-- 第 5 项按 #3 决策是**用户可选**：无 key 走 20 RPM 匿名额度，个人单机够用；有 key 500 RPM + 可观测余量。所以 Jina 走不通不阻塞 v1，但票里既然要求就一并开通。
-- 第 6 项不在本票范围（分类 provider 型号与计费在 PRD v2 / #19 讨论），条目名先占位。
+- 第 4 项 **暂不配**：用户不为视频元数据单独开 Google Cloud 账号。降级方案见 §3.2。条目名先占位，以后要补直接填同一个位置。
+- 第 5 项按 #3 决策是**用户可选**：无 key 走 20 RPM 匿名额度，个人单机够用；有 key 500 RPM + 可观测余量。Jina 走不通不阻塞 v1。
+- 第 6 项是 v1 分类的**必需项**（[classification-quality.md](classification-quality.md) 明确「分类 provider 的接入与凭证管理」归 #15）：用户已有百炼账号，直接当默认 provider，不再单独开 OpenAI key。
 
 ## 2. 存放规范
 
@@ -34,7 +35,8 @@
 
 - **数据库只存逻辑引用**，不存明文：`settings.classifier.api_key_ref`（#10 §settings）之类的字段存 `keychain://aetherhud/youtube.api_key` 这种 URI。
 - 未配置的凭证在设置页显示「未配置」，对应功能降级而不是崩溃：
-  - 无 YouTube key → 视频元数据退到 oEmbed（标题保底）
+  - 无 YouTube key → 视频元数据退到 oEmbed（只有标题/作者/缩略图，见 §3.2）
+  - 无百炼 key → 分类器不可用，全部条目落 `00_未分类/待人工归档`（fail-safe，#18）
   - 无 Jina key → 走匿名 20 RPM 或纯 L1 直连
   - 无飞书凭证 → 该同步源不显示/不轮询
 - 严禁：写进 `.env`、写进 SQLite、写进日志、写进 panic 信息。日志里密钥一律 mask 成前 4 后 4。
@@ -63,15 +65,20 @@ v1 设置页「凭证管理」分区（PRD v2 待写 UI 细节）负责写入；
    - 如果 Base 开了高级权限，还要在「高级权限」里给应用「可管理」。
 7. 复制该表浏览器地址：形如 `https://xxx.feishu.cn/base/bascnXXXX?table=tblXXXX&view=vewXXXX`。里面 `bascnXXXX` 就是 app_token，`table=tblXXXX` 就是 table_id。
 
-### 3.2 YouTube Data API v3
+### 3.2 YouTube Data API v3（v1 暂不配）
 
-1. 打开 <https://console.cloud.google.com/>，新建项目（如 `aetherhud`）。
-2. 「API 和服务」→「库」→ 搜 `YouTube Data API v3` → 启用。
-3. 「API 和服务」→「凭证」→ 创建凭证 → **API 密钥**。
-4. 建议给密钥加「API 限制 = YouTube Data API v3」，防止被别处拿去刷额度。
-5. 免费配额：默认 **10,000 单位/天**（美国太平洋时间 0 点重置）；`videos.list` 1 单位/次、`commentThreads.list` 1 单位/次，所以约 5,000 视频/天；`search.list` 另有每天 100 次独立桶（HUD 不用它做搜索）。
+**2026-10-21 决定：跳过。** 访问 Google Cloud 要挂代理，用户不想为「视频简介 + 热评」这一层信息单独开 Google 账号。v1 的降级：
 
-已知坑：新项目如果提示结算/验证，先停手告诉我，别绑卡。
+| 路径 | 能拿到 | 实测结论（2026-10-21） |
+|---|---|---|
+| oEmbed（`youtube.com/oembed`） | 标题、作者、缩略图 | ✅ 无 key、免费、可用 |
+| 页面直连解析 | 想拿简介 | ❌ watch 页对无 cookie 请求返回空壳，只有通用 meta description |
+| Invidious / Piped 公共实例 | 简介 + 评论 | ⚠️ 免费但公共实例时好时坏 |
+| yt-dlp 本地 | 全都能拿 | ✅ 最稳，但要随应用分发二进制 |
+
+- 影响：YouTube 视频只有标题/作者/缩略图能喂给分类器，准确率低于「简介 + 热评」路径。按 #20 统计视频只占收藏 13%，可接受。
+- 以后要补：<https://console.cloud.google.com/> 新建项目 → 启用 `YouTube Data API v3` → 创建 API 密钥（加 API 限制）→ 填 `.local/keys.env` 的 `YOUTUBE_API_KEY`。配额 10,000 单位/天；`videos.list` / `commentThreads.list` 各 1 单位/次；`search.list` 另有 100 次/天独立桶。
+- B 站不需要任何 key：走官方 `x/web-interface/view` + `x/v2/reply`（见 #2 调研）。B 站字幕见 §6。
 
 ### 3.3 Jina Reader
 
@@ -81,6 +88,18 @@ v1 设置页「凭证管理」分区（PRD v2 待写 UI 细节）负责写入；
 4. 平均延迟 7.9s（headless 渲染），热 URL 0.9–2.2s —— 所以 HUD 里必须异步，不能堵 UI。
 
 已知坑：本机（2026-10-21）实测 `jina.ai` / `r.jina.ai` 直连 DNS 污染（解析到 31.13.x.x / 199.59.x.x），走代理地址 127.0.0.1:10809 能建隧道但 TLS 无响应。**换一个代理节点再验证**；这不影响 v1（默认 L1 直连抓取，Jina 只是降级路径）。
+
+### 3.4 阿里百炼 DashScope（分类 provider，必需）
+
+v1 分类引擎走 OpenAI 兼容协议，百炼正好提供兼容端点，且用户已有账号（不再单独开 OpenAI key）。
+
+1. 打开 <https://bailian.console.aliyun.com/> 登录并开通模型服务。
+2. 「API-KEY 管理」→ 创建 API Key（按应用命名，如 `aetherhud-classifier`）。
+3. 端点：国内 `https://dashscope.aliyuncs.com/compatible-mode/v1`；国际 `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`。两个都实测存在（无 key 返回 401 的 OpenAI 兼容错误体，2026-10-21）。
+4. 模型：分类是「短文本 → 多选映射」，用便宜快的小模型（`qwen-flash` 一类）即可；最终型号由 #21 评测结果定（#14 要求同条件基线，换模型要重跑 200 条金标）。
+5. 计费：按 token；请求体很小（taxonomy 注入 + 正文 ≤500 字），单条成本可忽略。不要用大模型做分类（慢且贵）。
+
+注意：HUD 只用 OpenAI 兼容端点，不引入 DashScope 原生 SDK。
 
 ## 4. 怎么验证
 
@@ -101,12 +120,14 @@ $env:HTTPS_PROXY="http://127.0.0.1:10809"; $env:NODE_USE_ENV_PROXY="1"; node scr
 | Jina | `GET https://r.jina.ai/https://example.com` | 200 + 返回正文 | key 有效 + 网络可达（读到 `x-ratelimit-*` 头就顺手记下配额） |
 | YouTube | `videos.list` 查 `jNQXAC9IVRw` | 200 + 有 items | key 有效 + API 已启用 + 配额未耗尽 |
 | 飞书 | token → 列数据表 → 列字段 → search 读 5 条 | 每步 `code == 0` | app_id/secret 有效 + 应用已加入 Base + 读权限生效 |
+| 百炼 | `GET /compatible-mode/v1/models`（不支持时退一次 `chat/completions`） | 200 且返回模型列表或有 choices | key 有效 + 区域端点正确 |
 
 产物：控制台摘要（英文，避免 Windows 控制台乱码）+ `.local/keys-report.json`（实测结果，**不含密钥明文**，可直接贴到 issue）。退出码 0 = 全过。
 
 ### 4.1 `.local/keys.env` 模板
 
 ```
+DASHSCOPE_API_KEY=
 JINA_API_KEY=
 YOUTUBE_API_KEY=
 FEISHU_APP_ID=
@@ -121,6 +142,7 @@ FEISHU_BASE_URL=
 | Jina Reader | 匿名 20 RPM / 免费 key 500 RPM；免费 token 非商用 | #3 调研（2026-10-13） |
 | YouTube Data API v3 | 10,000 单位/天；`videos.list` 1 单位；`search.list` 100 次/天 | 官方配额表（2026-10-15 更新，本机实测 2026-10-21） |
 | 飞书多维表格 | search 20 QPS；记录更新 50 QPS（按 API×应用×租户） | #5 调研（2026-10-13） |
+| 阿里百炼 DashScope | 按输入/输出 token 计费（新用户有赠送额度）；分类单条消耗可忽略 | 百炼控制台 / 官方定价页 |
 
 ## 6. 已知风险
 
@@ -129,6 +151,24 @@ FEISHU_BASE_URL=
 | 飞书个人版没有团队 | 无法进开发者后台 | 自建免费团队，自己当管理员（官方支持） |
 | 飞书应用没加进 Base | 全部接口 91403 | checklist §3.1 第 6 步 |
 | 飞书改了权限没发版 | 权限不生效 | 每次改权限都重新「创建版本 → 发布」 |
-| Jina 域名在用户网络不可达 | L2 抓取路径不可用 | v1 默认 L1 直连；网络可用时再开 Jina |
-| YouTube key 泄露被刷额度 | 当天配额废掉 | 密钥加 API 限制；Keychain 存储 |
-| Google Cloud 要求绑卡 | 可能阻塞开通 | 先停手，报告后再决定 |
+| Jina 域名在用户网络不可达 | L2 抓取路径不可用 | v1 默认 L1 直连；配 §7 代理后再验证 |
+| B 站接口 412 风控 | 视频元数据拿不到 | UA + buvid3 指纹 + 低频 + 退避（#2 调研）；实现时实测验证 |
+| B 站字幕接口不稳定 | 少一层分类信号 | 字幕是增强项，失败就降级到「简介 + 置顶/热评」 |
+| 百炼 key 泄露 | 别人刷你账单 | Keychain 存储 + 控制台限额/告警 |
+| 视频元数据只有标题 | 标题党视频分类偏差 | #14 评测会暴露；如果准确率不达标再补 YouTube key 或字幕 |
+
+## 7. 网络代理（PRD v2 设置项）
+
+用户环境（2026-10-21 确认）：本机开全局代理可用，但应用不能依赖系统代理设置，设置页要能自己指定。
+
+设置 →「网络」分区三档，默认「跟随系统」：
+
+| 档位 | 行为 |
+|---|---|
+| 跟随系统 | Windows 读 WinHTTP/WinINet 代理；macOS 读系统代理（reqwest 的系统代理探测） |
+| 自定义代理 | 用户填 `http://127.0.0.1:10809` 这类地址；所有出站请求强制走它 |
+| 直连 | 忽略系统代理，永远直连（内网/调试） |
+
+- 覆盖范围：摄取抓取（Jina / 网页 / 视频元数据）、分类调用（百炼）、同步轮询（飞书）、更新检查——所有出站 HTTP。
+- 代理地址不敏感，存 settings；带认证时用户名密码进 Keychain（`proxy.password`）。
+- 冲突提示：百炼/飞书在国内直连更快，全局走代理会绕远。v1 先做「一档全局」，域名旁路（国内域名走直连）留作 v2 优化，不阻塞。
