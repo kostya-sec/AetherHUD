@@ -42,3 +42,6 @@ desktop.ini
 # 外部参考 demo（含其可能带入的 env，严禁入库）
 demo-gemini2/
 .demo-gemini2/
+
+# 本地评测集 / 收藏导出（含真实内容，严禁入库）
+.local/
