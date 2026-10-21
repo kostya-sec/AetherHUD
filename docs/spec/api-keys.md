@@ -1,6 +1,6 @@
 # API 凭证与密钥存放（API Keys & Keychain Spec v1）
 
-> 状态：**进行中**（2026-10-21：飞书 ✅ 已通；YouTube ⏸ 跳过；Jina ⬜ 网络待验；百炼 ⬜ 待开）
+> 状态：**已确认**（2026-10-21 全部实测完毕：飞书 ✅ / 百炼 ✅ / Jina ✅（需代理）/ YouTube ⏸ 跳过）
 > 来源票：[任务：开通 Jina / YouTube Data API / 飞书自建应用凭证](https://github.com/kostya-sec/AetherHUD/issues/15)
 > 依赖决议：#5（飞书多维表格同步）、#2（YouTube Data API）、#3（Jina Reader）、#10（settings 表与 key_ref）、#18（评测需要真实 provider）
 > 一句话：v1 要三个外部凭证，全部存进 **OS Keychain**（Windows 凭据管理器 / macOS 钥匙串），数据库和配置文件里只存"指针"，永不明文落盘。
@@ -13,8 +13,8 @@
 | 2 | 飞书开放平台（自建应用） | App Secret | ✅ 必填 | 换 `tenant_access_token` | `feishu.app_secret` |
 | 3 | 飞书多维表格 | Base app_token + table_id | ✅ 必填 | 同步源定位（可非秘密） | `feishu.app_token` / settings |
 | 4 | YouTube Data API v3 | API Key | ⏸ 暂不配（2026-10-21 决定） | 视频元数据（#2）；降级为 oEmbed 兜底 | `youtube.api_key` |
-| 5 | Jina Reader | API Key | ⬜ 可选（网络待验） | 网页正文抓取 L2 路径（#3） | `jina.api_key` |
-| 6 | 阿里百炼 DashScope（OpenAI 兼容） | API Key | ✅ 必填 | 分类引擎 + 评测（#14/#21） | `classifier.api_key` |
+| 5 | Jina Reader | API Key | ✅ 已验证（需代理） | 网页正文抓取 L2 路径（#3） | `jina.api_key` |
+| 6 | 阿里百炼 DashScope（OpenAI 兼容） | API Key | ✅ 已验证 | 分类引擎 + 评测（#14/#21） | `classifier.api_key` |
 
 - 第 4 项 **暂不配**：用户不为视频元数据单独开 Google Cloud 账号。降级方案见 §3.2。条目名先占位，以后要补直接填同一个位置。
 - 第 5 项按 #3 决策是**用户可选**：无 key 走 20 RPM 匿名额度，个人单机够用；有 key 500 RPM + 可观测余量。Jina 走不通不阻塞 v1。
@@ -87,7 +87,7 @@ v1 设置页「凭证管理」分区（PRD v2 待写 UI 细节）负责写入；
 3. 免费额度（#3 调研，2026-10-13）：无 key 20 RPM；免费 key 500 RPM；免费 key 附带的 token 配额限**非商用**（CC-BY-NC），个人自用无碍。
 4. 平均延迟 7.9s（headless 渲染），热 URL 0.9–2.2s —— 所以 HUD 里必须异步，不能堵 UI。
 
-已知坑：本机（2026-10-21）实测 `jina.ai` / `r.jina.ai` 直连 DNS 污染（解析到 31.13.x.x / 199.59.x.x），走代理地址 127.0.0.1:10809 能建隧道但 TLS 无响应。**换一个代理节点再验证**；这不影响 v1（默认 L1 直连抓取，Jina 只是降级路径）。
+已知坑：本机（2026-10-21）实测 `jina.ai` / `r.jina.ai` **直连 DNS 污染**（解析到 31.13.x.x / 199.59.x.x，直连必挂）；**必须走代理**，代理下实测 200 / 657ms。跑验证脚本时记得带 `HTTPS_PROXY` + `NODE_USE_ENV_PROXY=1`（见 §4）。这不影响 v1——默认 L1 直连抓取，Jina 只是降级路径。
 
 ### 3.4 阿里百炼 DashScope（分类 provider，必需）
 
@@ -172,3 +172,18 @@ FEISHU_BASE_URL=
 - 覆盖范围：摄取抓取（Jina / 网页 / 视频元数据）、分类调用（百炼）、同步轮询（飞书）、更新检查——所有出站 HTTP。
 - 代理地址不敏感，存 settings；带认证时用户名密码进 Keychain（`proxy.password`）。
 - 冲突提示：百炼/飞书在国内直连更快，全局走代理会绕远。v1 先做「一档全局」，域名旁路（国内域名走直连）留作 v2 优化，不阻塞。
+
+## 8. 实测记录（2026-10-21）
+
+跑法：`node scripts/setup/verify-keys.mjs`（Jina 需代理：`HTTPS_PROXY=http://127.0.0.1:10809` + `NODE_USE_ENV_PROXY=1`）。
+
+| 项 | 结果 | 实测数据 |
+|---|---|---|
+| 飞书自建应用 | ✅ | token 有效期 7200s；Base `K1odbfYaxarVMFsgyq0cYcOFnNf`；table `tblKbNrOt5WcPdKP`；字段=文本/已读/类别/添加日期；total=341 |
+| 阿里百炼 | ✅ | `/models` 200、178 个模型、150ms；端点 `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| Jina Reader | ✅（代理下） | 200 / 657ms；`x-ratelimit-limit: 500, 500;w=60`、`remaining: 499` → 免费档 500 RPM |
+| YouTube | ⏸ | 未配置；oEmbed 兜底（§3.2） |
+
+注意：Node 24 在 `NODE_USE_ENV_PROXY=1` 下退出时可能打印 `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`（libuv/undici 的已知噪音），不影响探针结果与 report 生成。
+
+结论：凭证全部就绪，v1 的分类（百炼）、同步（飞书）、抓取（Jina，代理下）链路均可跑通；Jina 与 YouTube 属降级路径，不影响主流程。
