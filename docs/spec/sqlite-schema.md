@@ -216,7 +216,7 @@ CREATE TABLE meta (
 ```
 
 - `settings` 默认键（v1）：`display.timezone` = `"Asia/Shanghai"`、`ui.hotkey`、`ui.theme_hue`、`webhook.path`、`classifier.provider`、`classifier.model`、`classifier.prompt_version`、`classifier.api_key_ref`、`window.position`。**API Key 本体只存 OS Keychain**，DB 只存条目引用名。
-- `meta` 键（v1）：`taxonomy_version`（taxonomy.json 的 `version`）、`schema_created_at`。schema 版本用 `PRAGMA user_version`（rusqlite_migration 管理），不入 meta。
+- `meta` 键（v1）：`taxonomy_version`（taxonomy.json 的 `version`）、`schema_created_at`、`last_update_check_at`（最近一次更新检查，Unix ms；见 [distribution-and-update.md](./distribution-and-update.md)）、`ignored_update_version`（被用户忽略的版本号）。schema 版本用 `PRAGMA user_version`（rusqlite_migration 管理），不入 meta。
 
 ### 3.9 fts_entries（全文索引，external content）
 

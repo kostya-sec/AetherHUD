@@ -82,4 +82,5 @@
 ## 4. 非功能性需求
 1. **内存与资源开销**：常驻后台内存不超过 50 MB，CPU 占用日常 0%。
 2. **离线高可用**：在断网环境下，抓取和 AI 管道进入队列挂起状态，本地搜索与 HUD 浏览功能不受任何影响。
-3. **跨平台兼容**：单一代码库，同时编译输出 macOS (.dmg / .app) 与 Windows (.msi / .exe)。
+3. **跨平台兼容**：单一代码库，同时编译输出 macOS（universal `.dmg`）与 Windows（NSIS `.exe` 安装包）。
+4. **分发与更新（v1）**：不做自动更新——应用内只检查新版本并提示，安装包由用户从 GitHub Release 或固定网盘文件夹手动下载安装；v1 不做代码签名与公证，首次安装/升级需按「安装前必读」放行系统门禁；升级前自动备份本地数据库。施工依据 [docs/spec/distribution-and-update.md](docs/spec/distribution-and-update.md)。
