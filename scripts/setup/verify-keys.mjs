@@ -382,6 +382,12 @@ if (run('jina')) {
   log('  -> ' + results.jina.status + (results.jina.httpStatus ? ' HTTP ' + results.jina.httpStatus : '') +
       (results.jina.latencyMs ? ' ' + results.jina.latencyMs + 'ms' : ''));
   if (results.jina.hint) log('     hint: ' + results.jina.hint);
+  if (results.jina.error) {
+    log('     error: ' + results.jina.error);
+    log('     hint : if this machine needs a proxy, rerun with:');
+    log('            $env:HTTPS_PROXY="http://127.0.0.1:10809"; $env:NODE_USE_ENV_PROXY="1"; node scripts/setup/verify-keys.mjs --only jina');
+    log('            (r.jina.ai is DNS-poisoned on some CN networks; test in a browser with proxy first)');
+  }
   if (results.jina.rateLimitHeaders) log('     ratelimit: ' + JSON.stringify(results.jina.rateLimitHeaders));
 }
 
@@ -392,6 +398,7 @@ if (run('youtube')) {
       (results.youtube.latencyMs ? ' ' + results.youtube.latencyMs + 'ms' : ''));
   if (results.youtube.sampleTitle) log('     sample: ' + results.youtube.sampleTitle);
   if (results.youtube.hint) log('     hint: ' + results.youtube.hint);
+  if (results.youtube.error) log('     error: ' + results.youtube.error);
 }
 
 if (run('feishu')) {
