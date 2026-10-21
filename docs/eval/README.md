@@ -6,6 +6,8 @@
 
 真实评测集**只存本地、不入 git**（含真实收藏内容）。仓库只保留本说明、空模板与校验脚本。
 
+> 自建 L2（#18 升格）只存在于本机覆盖层：校验时用 `--taxonomy "<app_data_dir>/taxonomy.effective.json"`（不存在则回退仓库 `taxonomy.json`）。
+
 ## 1. 存放位置
 
 Tauri `app_data_dir`（实现后以 `tauri.conf.json` 的 identifier 为准）：
@@ -35,7 +37,7 @@ Tauri `app_data_dir`（实现后以 `tauri.conf.json` 的 identifier 为准）�
 | `difficulty` | enum | `easy` / `hard` |
 | `split` | enum | `visible` / `blind`（边界集为 `boundary`） |
 | `eval_set_version` | string | 形如 `2026-10-v1`，绑定 taxonomy 版本 |
-| `taxonomy_version` | string | 必须等于 `taxonomy.json` 的 `version`（当前 1.1.0） |
+| `taxonomy_version` | string | 标注时的**生效分类树版本**：底表版本（当前 1.1.0）或带自建节点修订号的 `1.1.0+uN`（#18）；校验以底表版本为准，`--taxonomy` 传 `app_data_dir/taxonomy.effective.json` |
 | `notes` | string | 可空；难例/占位 id/存疑点写这里 |
 
 ## 3. 分层与覆盖（门线验收前必须齐）
@@ -60,7 +62,7 @@ Tauri `app_data_dir`（实现后以 `tauri.conf.json` 的 identifier 为准）�
 2. **拆层**：先按 L2 配额补齐 120 条，再按真实收藏分布补到 200，同时满足 L1 ≥40；按 L1 分层随机拆 150/50。
 3. **标注**：L1/L2 唯一答案；形态标签 1~2 个必标；特征标签只标「搜索时会用、必须有」的核心标签；拿不准 → 边界集。
 4. **校验**：`node scripts/eval/validate-eval-set.mjs --file <主集> [--boundary <边界集>]`，全绿后再冻结。
-5. **冻结**：版本发布后不再修改；taxonomy 变更按 #14 §7 重映射并 bump 版本，跨版本指标不可比。
+5. **冻结**：版本发布后不再修改；taxonomy 变更按 #14 §7 重映射并 bump 版本，跨版本指标不可比；纯加法升格（#18）不重建评测集，但必须重跑基线。
 
 ## 5. 校验命令
 

@@ -18,7 +18,7 @@
 | 时间 | `INTEGER` Unix epoch **毫秒 UTC**（前端 `Date` 零转换）；展示时区由设置键 `display.timezone` 决定，**默认 `Asia/Shanghai`** |
 | 枚举 | `TEXT + CHECK (...)`；不用整数枚举 |
 | 布尔 | `INTEGER 0/1` + `CHECK (col IN (0,1))` |
-| JSON | **仅限不可查询快照**：`corrections.before_value/after_value`、`settings.value_json`。任何参与过滤/排序的字段禁止进 JSON |
+| JSON | **仅限不可查询快照**：`corrections.before_value/after_value`、`settings.value_json`、`entries.classify_suggestion`（#18）。任何参与过滤/排序的字段禁止进 JSON |
 | 主键 | 业务表 `INTEGER PRIMARY KEY AUTOINCREMENT`（防 id 复用）；`entries.uid` 存 ULID 作对外标识（导出/调试 JSON/未来跨机迁移） |
 | 字符 | UTF-8（SQLite 默认） |
 
@@ -35,8 +35,10 @@ PRAGMA busy_timeout = 5000;
 
 ```text
 app_data_dir/
-├── aether.db          # 主库（WAL/SHM 同目录）
-└── backups/           # 迁移前自动备份（VACUUM INTO）
+├── aether.db                     # 主库（WAL/SHM 同目录）
+├── taxonomy.overlay.json         # 自建 L2 覆盖层（#18；随 DB 一并备份）
+├── taxonomy.effective.json       # 底表 ⊕ 覆盖层的合并结果（#18；只写，供调试与评测工具读取）
+└── backups/                      # 迁移前自动备份（VACUUM INTO + 覆盖层快照）
 ```
 
 ## 3. 表结构（migration v1 的完整 DDL）
@@ -69,6 +71,7 @@ CREATE TABLE entries (
   pinned          INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0,1)),
   done            INTEGER NOT NULL DEFAULT 0 CHECK (done IN (0,1)),
   corrected_by    TEXT    CHECK (corrected_by IN ('ai','human')),
+  classify_suggestion TEXT,                              -- JSON 快照：弃权时的分类建议（#18）；非弃权或已改分类为 NULL
   fetch_source    TEXT    CHECK (fetch_source IN ('dom_smoothie','jina','video_api','none')),
   fetched_at      INTEGER,
   trashed_at      INTEGER,
@@ -85,6 +88,7 @@ CREATE TABLE entries (
 - `lifecycle`：用户可见性轴；`trashed` 必须配 `trashed_at`，30 天后硬删。
 - `pinned` / `done` / `corrected_by`：正交标记，不进状态机。
 - `l1_id` / `l2_id`：**只存 id，不存显示名**（显示名从内存 taxonomy 解析；否定 demo 的冗余 name 方案）。
+- `classify_suggestion`：分类建议的 JSON 快照（#18，见 [taxonomy-evolution.md](./taxonomy-evolution.md) §4）；仅弃权条目非空，任何 L1/L2 变更即清空。
 
 ### 3.2 tags（L3 标签实体，全局唯一）
 
@@ -358,19 +362,22 @@ lifecycle:       active → archived（封存）→ active
 
 ## 10. taxonomy 版本迁移
 
-1. 启动时读 taxonomy.json（内存）+ `meta.taxonomy_version`。
+分类由**只读底表 + 用户覆盖层**组成（#18，见 [taxonomy-evolution.md](./taxonomy-evolution.md) §3）：底表是安装包内的 `taxonomy.json`，覆盖层是 `app_data_dir/taxonomy.overlay.json`（只存自建 L2），两者合并为**生效分类树**；生效版本形如 `1.1.0+u3`，`meta.taxonomy_version` 存生效版本。
+
+1. 启动时读底表 + 覆盖层，校验（父 L1 存在、id 唯一、同父下名字唯一）并合并出生效分类树；覆盖层损坏则备份后以底表启动。再比对 `meta.taxonomy_version`。
 2. 版本不一致时：
-   a. `VACUUM INTO 'backups/aether-<ts>.db'` 备份（保留最近 5 份）。
-   b. 校验 `entries` 中 distinct `(l1_id, l2_id)` 是否存在于新 taxonomy；失效引用重映射到 `l1_inbox/l2_manual_review`。
-   c. L2 换父节点：按新 taxonomy 重算受影响条目的 `l1_id`。
+   a. `VACUUM INTO 'backups/aether-<ts>.db'` 备份，并把覆盖层快照复制到 `backups/`（各保留最近 5 份）。
+   b. 校验 `entries` 中 distinct `(l1_id, l2_id)` 是否存在于生效分类树；失效引用重映射到 `l1_inbox/l2_manual_review`。
+   c. L2 换父节点：按生效分类树重算受影响条目的 `l1_id`。
    d. 更新 `meta.taxonomy_version`。
 3. 失效引用重映射**不写 corrections**（系统迁移不进纠偏样本；见 #14 的数据口径）。
+4. 自建节点的新建 / 停用 / 删除 / 改名只改覆盖层（`revision + 1`）；官方节点不在应用内改动。
 
 ## 11. 迁移与备份
 
 - 框架：`rusqlite_migration`（`PRAGMA user_version`，顺序执行 + 原子提交 + 降级检测）。
 - v1 迁移内容：本文件 §3–§4 全部 DDL + 触发器 + `rebuild_fts`。
-- 迁移前自动 `VACUUM INTO` 备份到 `backups/`，保留最近 5 份。
+- 迁移前自动 `VACUUM INTO` 备份到 `backups/`，并把 `taxonomy.overlay.json` 一并复制为 `backups/taxonomy.overlay.<ts>.json`，保留最近 5 份。
 - 大数据量 `rebuild`（FTS 重建）放在迁移之后、可中断、带进度；不放进事务迁移脚本。
 - 迁移脚本改动（后续版本）：只追加，不改已发布迁移。
 
@@ -395,6 +402,8 @@ lifecycle:       active → archived（封存）→ active
 - [ ] 迁移前自动备份文件生成且可打开。
 - [ ] `< 3` 字符搜索走 LIKE、`≥ 3` 字符走 MATCH；FTS5 语法注入（`OR`/`NOT`/引号）不改语义不报错。
 - [ ] taxonomy 版本 bump 后失效引用重映射到 00 未分类，L2 换父后 `l1_id` 同步。
+- [ ] 覆盖层合并生效：自建 L2 出现在球列/L2 面板；停用节点不注入分类候选；覆盖层损坏时回退底表并提示。
+- [ ] `entries.classify_suggestion` 仅弃权条目非空，改分类后清空。
 
 ## 14. 未纳入本票
 
