@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "meta": {
     "description": "2+1 维分类体系：L1/L2 为树状互斥场景，L3 为正交筛选标签池"
   },
@@ -11,14 +11,17 @@
       { "id": "tag_prompt", "name": "提示词", "color": "#8B5CF6" },
       { "id": "tag_workflow", "name": "工作流", "color": "#EC4899" },
       { "id": "tag_asset", "name": "素材/资源", "color": "#F59E0B" }
-    ],
-    "media_types": [
-      { "id": "type_link", "name": "链接" },
-      { "id": "type_video", "name": "视频" },
-      { "id": "type_article", "name": "图文" }
     ]
   },
   "taxonomy": [
+    {
+      "id": "l1_inbox",
+      "name": "00 未分类",
+      "icon": "inbox",
+      "children": [
+        { "id": "l2_manual_review", "name": "待人工归档", "l3_preset_tags": [] }
+      ]
+    },
     {
       "id": "l1_content",
       "name": "01 内容与表达",
