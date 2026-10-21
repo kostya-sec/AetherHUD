@@ -79,7 +79,23 @@ node scripts/eval/validate-eval-set.mjs --file "<...>" --json
 
 校验器要求 Node ≥18（零依赖）。退出码：0 通过、1 有错误、2 参数或读取失败。
 
+
 ## 6. 与 #21 的衔接
 
 - 校验器的字段规则与层次配额是 #21 `aether-eval` 的输入契约；两边口径不一致时以本文件与 #14 规格为准。
 - 评测集版本、taxonomy 版本写进每条记录，报告必须回显两个版本并做可比性校验。
+
+## 7. 从收藏导出导入候选
+
+真实收藏导出（浏览器书签 HTML/JSON、飞书/表格 CSV、URL 清单）先转成候选 JSONL，再进入标注：
+
+```bash
+node scripts/eval/import-collection.mjs \
+  --in "<收藏导出文件>" [--in <另一个文件> ...] \
+  --out "<app_data_dir>/eval/candidates/collection-2026-10.jsonl" [--limit N]
+```
+
+- 支持格式：Chrome/Edge `Bookmarks` JSON、通用 JSON 数组、Netscape 书签 HTML、CSV（`url/title` 或 `链接/标题` 表头）、TXT/MD（一行一 URL 或 Markdown 链接）。
+- 自动去重（canonical URL、去 `utm_*` 等跟踪参数）、按域名推断 `media_type`（视频站 → `video`，其余 → `link`）。
+- 候选字段：`entry_id / title / url / media_type / source / notes`；`gold`、`difficulty`、`split` 在标注阶段补齐，**候选文件不得直接当评测集**。
+- 收藏导出与候选文件都含真实内容，只放本地（`.local/` 或 `app_data_dir`），不入 git。
