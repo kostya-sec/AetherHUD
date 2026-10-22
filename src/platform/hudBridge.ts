@@ -2,8 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   resolveGlobalKeyDown,
+  selectHudPhase,
   type HudKeyAction,
   type HudStore,
+  type KeyDownLike,
 } from "../hud-model";
 
 /** Shell → webview events. Keep in sync with src-tauri/src/events.rs. */
@@ -11,29 +13,35 @@ export const SUMMON_EVENT = "hud://summon";
 export const DISMISS_EVENT = "hud://dismiss";
 
 /** A keydown as the DOM sees it; kept structural so tests need no real KeyboardEvent. */
-export interface KeyboardLike {
-  readonly key: string;
-  readonly isComposing?: boolean;
-  readonly keyCode?: number;
-  readonly ctrlKey?: boolean;
-  readonly metaKey?: boolean;
-  readonly altKey?: boolean;
-  readonly shiftKey?: boolean;
+export interface KeyboardLike extends KeyDownLike {
   preventDefault(): void;
   stopPropagation(): void;
 }
 
+type Scheduler = (task: () => void) => void;
+
+const nextTask: Scheduler = (task) => {
+  setTimeout(task, 0);
+};
+
 /**
  * Applies a `resolveGlobalKeyDown` decision to the real event and asks the shell to
- * dismiss when the HUD owns Esc. Exported for tests: this is the only place where the
- * key guard touches the OS.
+ * dismiss when the HUD owns Esc.
+ *
+ * The dismiss request is deferred by one task (#17 §7): the global Esc decision must
+ * not race the IME or the webview's own same-frame Esc handling. `schedule` is a seam
+ * for tests; production always defers.
  */
-export function applyKeyAction(action: HudKeyAction, event: KeyboardLike): void {
+export function applyKeyAction(
+  action: HudKeyAction,
+  event: KeyboardLike,
+  schedule: Scheduler = nextTask,
+): void {
   if (action === "ignore") return;
   event.preventDefault();
   event.stopPropagation();
   if (action === "dismiss") {
-    dismissHud();
+    schedule(dismissHud);
   }
 }
 
@@ -50,7 +58,8 @@ export function dismissHud(): void {
  * Wires the HUD model to the OS shell:
  * - `hud://summon` resets to S0 and requests search focus (唤出即输入),
  * - `hud://dismiss` starts the input lock (收起期间吞键),
- * - the capture-phase keydown guard handles Esc and swallows keys while dismissing.
+ * - the capture-phase keydown guard handles Esc and swallows keys while dismissing,
+ * - `compositionend` timestamps feed the 100 ms IME grace window.
  *
  * Resolves only after both shell listeners are registered: the caller must await it
  * before telling the shell the webview is ready, otherwise the very first summon is
@@ -69,12 +78,26 @@ export async function connectHudBridge(store: HudStore): Promise<() => void> {
     result.status === "fulfilled" ? [result.value] : [],
   );
 
-  const onKeyDown = (event: KeyboardEvent): void => {
-    applyKeyAction(resolveGlobalKeyDown(event, store.getState().phase), event);
+  // The guard needs a monotonic clock shared with the composition listener. The
+  // webview's performance.now() is that clock; Date.now() could jump.
+  let compositionEndedAt: number | null = null;
+  const onCompositionEnd = (): void => {
+    compositionEndedAt = performance.now();
   };
+
+  const onKeyDown = (event: KeyboardEvent): void => {
+    const action = resolveGlobalKeyDown(event, selectHudPhase(store.getState()), {
+      now: performance.now(),
+      compositionEndedAt,
+    });
+    applyKeyAction(action, event);
+  };
+
+  window.addEventListener("compositionend", onCompositionEnd, { capture: true });
   window.addEventListener("keydown", onKeyDown, { capture: true });
 
   return () => {
+    window.removeEventListener("compositionend", onCompositionEnd, { capture: true });
     window.removeEventListener("keydown", onKeyDown, { capture: true });
     for (const unlisten of unlisteners) unlisten();
     unlisteners.length = 0;

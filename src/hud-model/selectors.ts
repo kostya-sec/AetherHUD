@@ -12,9 +12,6 @@ export const selectSearchOrbVisible = (state: HudState): boolean => !state.searc
 
 export const selectHudPhase = (state: HudState): HudPhase => state.phase;
 
-/** True while the shell is sliding the HUD away: the keyboard router must swallow keys. */
-export const selectInputLocked = (state: HudState): boolean => state.phase === "dismissing";
-
 /** Ball slots in visual order. The search orb only exists while the search bar is collapsed. */
 export const selectVisibleBallSlots = (state: HudState): readonly BallSlot[] =>
   state.search.expanded

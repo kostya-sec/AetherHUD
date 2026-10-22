@@ -57,17 +57,12 @@ impl HitBoxRegistry {
 
 /// Mirror of the window's `ignore_cursor_events` flag. Keeps the shell from calling
 /// the OS setter on every 50 ms tick.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct IgnoreCursor {
+    /// Windows/Tauri create the window without `WS_EX_TRANSPARENT`, so the mirror
+    /// starts at "not ignoring". The shell turns click-through on as soon as it maps
+    /// the window, before the first hitbox report arrives.
     ignoring: bool,
-}
-
-impl Default for IgnoreCursor {
-    fn default() -> Self {
-        // The HUD starts fully click-through; the webview reports hitboxes once it has
-        // rendered, and only then can a click be captured.
-        Self { ignoring: true }
-    }
 }
 
 impl IgnoreCursor {
@@ -75,19 +70,15 @@ impl IgnoreCursor {
         Self::default()
     }
 
-    /// Applies a hit-test result and returns the new OS value when it must change.
-    pub fn update(&mut self, hit: bool) -> Option<bool> {
-        let wanted = !hit;
-        if wanted == self.ignoring {
+    /// Applies the desired OS value (`true` = click-through) and returns it when it
+    /// must change. The shell sets `true` while docked/dismissing and `!hit` while
+    /// visible, so the OS setter only runs on real changes.
+    pub fn apply(&mut self, ignore: bool) -> Option<bool> {
+        if ignore == self.ignoring {
             return None;
         }
-        self.ignoring = wanted;
-        Some(wanted)
-    }
-
-    /// Forces click-through (used while docked off screen and while dismissing).
-    pub fn force_ignore(&mut self) -> Option<bool> {
-        self.update(false)
+        self.ignoring = ignore;
+        Some(ignore)
     }
 }
 
@@ -139,30 +130,25 @@ mod tests {
     #[test]
     fn the_ignore_flag_only_flips_when_the_answer_changes() {
         let mut ignore = IgnoreCursor::new();
-        assert_eq!(ignore.update(false), None, "already click-through");
+        assert_eq!(
+            ignore.apply(true),
+            Some(true),
+            "the OS starts without click-through"
+        );
+        assert_eq!(ignore.apply(true), None);
 
         assert_eq!(
-            ignore.update(true),
+            ignore.apply(false),
             Some(false),
             "hovering a control captures"
         );
-        assert_eq!(ignore.update(true), None);
+        assert_eq!(ignore.apply(false), None);
 
         assert_eq!(
-            ignore.update(false),
+            ignore.apply(true),
             Some(true),
             "leaving the control passes through"
         );
-        assert_eq!(ignore.update(false), None);
-    }
-
-    #[test]
-    fn forcing_click_through_is_idempotent() {
-        let mut ignore = IgnoreCursor::new();
-        assert_eq!(ignore.force_ignore(), None);
-
-        ignore.update(true);
-        assert_eq!(ignore.force_ignore(), Some(true));
-        assert_eq!(ignore.force_ignore(), None);
+        assert_eq!(ignore.apply(true), None);
     }
 }

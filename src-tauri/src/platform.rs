@@ -1,5 +1,32 @@
 //! Small OS-specific helpers the shell needs but Tauri does not expose.
 
+/// Runs `task` on the macOS main thread and returns its result, or runs it inline when
+/// the caller already is the main thread.
+///
+/// `run_on_main_thread` only *queues* the task, so waiting for it from the main thread
+/// would deadlock. Tray clicks, the global hotkey and window events all arrive on the
+/// main thread, which is exactly where `start_summon` captures the previous application.
+#[cfg(target_os = "macos")]
+pub fn on_main_thread<T, F>(app: &tauri::AppHandle, task: F) -> Option<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    use tauri::Manager;
+
+    if objc2::MainThreadMarker::new().is_some() {
+        return Some(task());
+    }
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let app = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(task());
+    })
+    .ok()?;
+    rx.recv().ok()
+}
+
 /// Current cursor position in physical screen pixels.
 ///
 /// Windows reports physical pixels directly (including negative origins on
@@ -23,26 +50,17 @@ pub fn cursor_position(_app: &tauri::AppHandle, _scale_factor: f64) -> Option<(i
 /// See the Windows overload above.
 #[cfg(target_os = "macos")]
 pub fn cursor_position(app: &tauri::AppHandle, scale_factor: f64) -> Option<(i32, i32)> {
+    use objc2::MainThreadMarker;
     use objc2_app_kit::{NSEvent, NSScreen};
-    use objc2_foundation::MainThreadMarker;
-    use tauri::Manager;
 
-    // AppKit calls belong on the main thread; the supervisor polls off it.
-    let (tx, rx) = std::sync::mpsc::channel();
-    let handle = app.clone();
-    handle
-        .run_on_main_thread(move || {
-            let value = (|| {
-                let marker = MainThreadMarker::new()?;
-                let screen = NSScreen::mainScreen(marker)?;
-                let screen_height = screen.frame().size.height;
-                let location = NSEvent::mouseLocation();
-                Some((location.x, screen_height - location.y))
-            })();
-            let _ = tx.send(value);
-        })
-        .ok()?;
-    let (x, y) = rx.recv().ok()??;
+    let (x, y) = on_main_thread(app, || {
+        let marker = MainThreadMarker::new()?;
+        let screen = NSScreen::mainScreen(marker)?;
+        let screen_height = screen.frame().size.height;
+        let location = NSEvent::mouseLocation();
+        Some((location.x, screen_height - location.y))
+    })??;
+
     let scale = if scale_factor > 0.0 {
         scale_factor
     } else {

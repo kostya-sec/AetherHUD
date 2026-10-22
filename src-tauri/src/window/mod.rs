@@ -275,28 +275,19 @@ impl HudWindow {
                 return false;
             }
         } else {
-            let mut ignore = self
-                .ignore_cursor
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner());
-            if let Some(value) = ignore.force_ignore() {
-                let _ = self.window.set_ignore_cursor_events(value);
-            }
+            self.set_click_through(true);
         }
         true
     }
 
     /// Parks the window just below the monitor without showing it, then shows it.
     fn reveal_offscreen(&self) {
-        let size = self.logical_size();
-        let bounds = self.monitor_bounds();
-        let target = geometry::summon_target(*self.lock(&self.last_visible), size, &bounds);
-        let dock = geometry::dock_position(target, &bounds);
+        let (_, dock) = self.target_and_dock();
 
         let _ = self
             .window
             .set_position(LogicalPosition::new(dock.0, dock.1));
-        let _ = self.window.set_ignore_cursor_events(true);
+        self.set_click_through(true);
         if !self.window.is_visible().unwrap_or(false) {
             if let Err(error) = self.window.show() {
                 eprintln!("[aetherhud] failed to map the HUD window: {error}");
@@ -305,31 +296,50 @@ impl HudWindow {
         tray::sync(&self.app, self.phase());
     }
 
-    fn start_summon(self: &Arc<Self>, reason: SummonReason) {
-        self.remember_previous_app();
-
+    /// Where the HUD should land and where it parks: (on-screen target, off-screen dock).
+    fn target_and_dock(&self) -> ((f64, f64), (f64, f64)) {
         let size = self.logical_size();
         let bounds = self.monitor_bounds();
         let target = geometry::summon_target(*self.lock(&self.last_visible), size, &bounds);
-        let dock = geometry::dock_position(target, &bounds);
+        (target, geometry::dock_position(target, &bounds))
+    }
 
+    /// Toggles whole-window click-through, only calling the OS when the value changes.
+    fn set_click_through(&self, ignore: bool) {
+        let mut cursor = self
+            .ignore_cursor
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if let Some(value) = cursor.apply(ignore) {
+            let _ = self.window.set_ignore_cursor_events(value);
+        }
+    }
+
+    fn start_summon(self: &Arc<Self>, reason: SummonReason) {
+        self.remember_previous_app();
+
+        let (target, dock) = self.target_and_dock();
         let visible = self.window.is_visible().unwrap_or(false);
-        let from = match self.current_position() {
-            Some(position) if visible => geometry::clamp_to_monitor(position, size, &bounds),
-            _ => dock,
+        // A dismissed HUD waits at the off-screen dock, so the slide must start exactly
+        // there (never clamped back on screen) to give the "从屏外滑入" motion. While a
+        // dismiss animation is still running, the slide starts where the window is.
+        let from = if visible {
+            self.current_position().unwrap_or(dock)
+        } else {
+            dock
         };
 
         // Windows foreground lock: show → set_position → set_focus in one tight
         // sequence, otherwise the first click after a summon is eaten (#24 §8).
         if !visible {
-            let _ = self
-                .window
-                .set_position(LogicalPosition::new(from.0, from.1));
             if let Err(error) = self.window.show() {
                 eprintln!("[aetherhud] failed to map the HUD window: {error}");
             }
         }
-        let _ = self.window.set_ignore_cursor_events(true);
+        let _ = self
+            .window
+            .set_position(LogicalPosition::new(from.0, from.1));
+        self.set_click_through(true);
         self.focus_window();
         // Emit only after the window owns focus: the webview answers with a DOM focus
         // on the search box, which must not race the OS focus grant (#16 K1).
@@ -358,14 +368,7 @@ impl HudWindow {
         #[cfg(target_os = "macos")]
         panel::resign_key(&self.app);
 
-        let mut ignore = self
-            .ignore_cursor
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        if let Some(value) = ignore.force_ignore() {
-            let _ = self.window.set_ignore_cursor_events(value);
-        }
-        drop(ignore);
+        self.set_click_through(true);
 
         let size = self.logical_size();
         let current = self.current_position().unwrap_or((0.0, 0.0));
@@ -423,7 +426,7 @@ impl HudWindow {
             }
 
             if transition == Transition::Dismiss {
-                let _ = window.set_ignore_cursor_events(true);
+                hud.set_click_through(true);
             }
             tray::sync(&hud.app, hud.phase());
         });
@@ -455,7 +458,7 @@ impl HudWindow {
     fn restore_previous_app(&self) {
         let previous = self.lock(&self.previous_app).take();
         if let Some(previous) = previous {
-            if !focus::restore(previous) {
+            if !focus::restore(&self.app, previous) {
                 eprintln!("[aetherhud] could not hand focus back to the previous application");
             }
         }
@@ -468,14 +471,7 @@ impl HudWindow {
             return Ok(());
         };
         let hit = self.hitboxes.hits((origin.x, origin.y), scale, cursor);
-
-        let mut ignore = self
-            .ignore_cursor
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        if let Some(value) = ignore.update(hit) {
-            let _ = self.window.set_ignore_cursor_events(value);
-        }
+        self.set_click_through(!hit);
         Ok(())
     }
 
@@ -495,49 +491,61 @@ impl HudWindow {
         Some(geometry::to_logical((position.x, position.y), scale))
     }
 
+    /// Monitors in the logical space of the window's *current* scale factor.
+    ///
+    /// Dividing every monitor by one conversion factor keeps logical rectangles
+    /// non-overlapping under mixed-DPI setups; a per-monitor divisor would make them
+    /// overlap and could clamp the HUD to the wrong screen. The window's own scale
+    /// changes when the OS moves it across monitors, and every summon re-queries.
     fn available_monitors(&self) -> Vec<MonitorBounds> {
+        let scale = self.window.scale_factor().unwrap_or(1.0);
         self.window
             .available_monitors()
             .unwrap_or_default()
             .iter()
-            .map(monitor_bounds_of)
+            .map(|monitor| monitor_bounds_of(monitor, scale))
             .collect()
     }
 
     /// The monitor to summon on: the one holding the remembered position, else the
     /// window's current monitor, else the primary monitor (#24 §8: 每次唤起重查).
     fn monitor_bounds(&self) -> MonitorBounds {
-        let monitors = self.available_monitors();
         let size = self.logical_size();
-        if let Some(position) = *self.lock(&self.last_visible) {
-            let center = (position.0 + size.0 / 2.0, position.1 + size.1 / 2.0);
+        let reference = self
+            .lock(&self.last_visible)
+            .map(|position| (position.0 + size.0 / 2.0, position.1 + size.1 / 2.0))
+            .or_else(|| {
+                self.current_position()
+                    .map(|position| (position.0 + size.0 / 2.0, position.1 + size.1 / 2.0))
+            });
+        self.monitor_near(reference)
+    }
+
+    fn monitor_bounds_at(&self, position: (f64, f64), size: (f64, f64)) -> MonitorBounds {
+        self.monitor_near(Some((position.0 + size.0 / 2.0, position.1 + size.1 / 2.0)))
+    }
+
+    /// The monitor owning `reference`, falling back to current/primary/first.
+    fn monitor_near(&self, reference: Option<(f64, f64)>) -> MonitorBounds {
+        let monitors = self.available_monitors();
+        if let Some(point) = reference {
             if let Some(bounds) =
-                geometry::monitor_for_point(&monitors, center).and_then(|index| monitors.get(index))
+                geometry::monitor_for_point(&monitors, point).and_then(|index| monitors.get(index))
             {
                 return *bounds;
             }
         }
+        let scale = self.window.scale_factor().unwrap_or(1.0);
         if let Some(monitor) = self.window.current_monitor().ok().flatten() {
-            return monitor_bounds_of(&monitor);
+            return monitor_bounds_of(&monitor, scale);
         }
         if let Some(monitor) = self.window.primary_monitor().ok().flatten() {
-            return monitor_bounds_of(&monitor);
+            return monitor_bounds_of(&monitor, scale);
         }
         monitors
             .first()
             .copied()
             .unwrap_or_else(|| MonitorBounds::new(0.0, 0.0, 1920.0, 1080.0, 1.0))
-    }
-
-    fn monitor_bounds_at(&self, position: (f64, f64), size: (f64, f64)) -> MonitorBounds {
-        let monitors = self.available_monitors();
-        let center = (position.0 + size.0 / 2.0, position.1 + size.1 / 2.0);
-        if let Some(bounds) =
-            geometry::monitor_for_point(&monitors, center).and_then(|index| monitors.get(index))
-        {
-            return *bounds;
-        }
-        self.monitor_bounds()
     }
 
     /// Locks a field, recovering from a poisoned mutex (a panicking animation thread
@@ -547,8 +555,7 @@ impl HudWindow {
     }
 }
 
-fn monitor_bounds_of(monitor: &Monitor) -> MonitorBounds {
-    let scale = monitor.scale_factor();
+fn monitor_bounds_of(monitor: &Monitor, scale: f64) -> MonitorBounds {
     let position = monitor.position();
     let size = monitor.size();
     MonitorBounds::new(

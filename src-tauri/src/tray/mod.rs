@@ -10,6 +10,7 @@ use tauri::menu::{MenuBuilder, MenuEvent, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 
+use crate::hotkey::HotkeyState;
 use crate::window::{HudWindow, Phase, UserTrigger};
 
 /// Stable tray id; also used to update the tooltip.
@@ -42,7 +43,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         // Left click toggles the HUD, right click opens the menu (#12). macOS builds
         // newer than 2.2 need this explicit flag, otherwise left click opens the menu.
         .show_menu_on_left_click(false)
-        .tooltip(tooltip_for(Phase::Hidden))
+        .tooltip(phase_labels(Phase::Hidden).1)
         .on_menu_event(on_menu_event)
         .on_tray_icon_event(on_tray_event);
 
@@ -64,31 +65,39 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 
     builder.build(app)?;
     app.manage(TrayMenu { toggle });
+    sync(app, Phase::Hidden);
     Ok(())
 }
 
-/// Keeps the menu label and tooltip in sync with the HUD phase. Status numbers
-/// (分类中 / 待处理 / 离线挂起) arrive with the pipeline tickets; the phase lives here.
+/// Keeps the toggle label and tooltip in sync with the HUD phase. Pipeline status
+/// numbers (分类中 / 待处理 / 离线挂起) join the tooltip once those tickets provide
+/// counts; the accelerator is already useful here because the hotkey may have failed
+/// to register and the tray is then the only summon path.
 pub fn sync(app: &AppHandle, phase: Phase) {
     if let Some(menu) = app.try_state::<TrayMenu>() {
-        let label = if phase.is_on_screen() {
-            "收起 HUD"
-        } else {
-            "显示 HUD"
-        };
-        let _ = menu.toggle.set_text(label);
+        let _ = menu.toggle.set_text(phase_labels(phase).0);
     }
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
-        let _ = tray.set_tooltip(Some(tooltip_for(phase)));
+        let tooltip = match hotkey_display(app) {
+            Some(accelerator) => format!("{} · 唤出 {accelerator}", phase_labels(phase).1),
+            None => phase_labels(phase).1.to_string(),
+        };
+        let _ = tray.set_tooltip(Some(tooltip));
     }
 }
 
-fn tooltip_for(phase: Phase) -> &'static str {
+/// The single source of the toggle label and tooltip state text per phase.
+fn phase_labels(phase: Phase) -> (&'static str, &'static str) {
     if phase.is_on_screen() {
-        "AetherHUD · 显示中"
+        ("收起 HUD", "AetherHUD · 显示中")
     } else {
-        "AetherHUD · 已收起"
+        ("显示 HUD", "AetherHUD · 已收起")
     }
+}
+
+fn hotkey_display(app: &AppHandle) -> Option<String> {
+    let status = app.try_state::<HotkeyState>()?.status();
+    status.registered.then_some(status.display)
 }
 
 fn on_menu_event(app: &AppHandle, event: MenuEvent) {

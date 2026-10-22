@@ -39,8 +39,12 @@ AetherHUD/
 │   │   ├── window/           # Transparent window, show/dismiss state machine, NSPanel, DPI
 │   │   ├── tray/             # Tray icon, menu, tooltip status
 │   │   ├── hotkey/           # Global shortcut register/rebind/conflict fallback
-│   │   ├── gesture/          # Windows SAO mouse gesture (opt-in, default off)
-│   │   └── commands.rs       # Thin IPC wrappers over aether-core
+│   │   ├── gesture/          # Windows SAO mouse gesture (opt-in, default off; T24)
+│   │   ├── focus.rs          # Previous-app focus hand-back for dismiss
+│   │   ├── platform.rs       # OS helpers: physical cursor position, main-thread hops
+│   │   ├── startup.rs        # Launch-mode parsing (manual launch vs --hidden resident)
+│   │   ├── events.rs         # Event names shared with the webview bridge
+│   │   └── commands.rs       # Thin IPC wrappers over aether-core / window controller
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── src/                      # Frontend (React 19)

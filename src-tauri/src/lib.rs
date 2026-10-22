@@ -69,11 +69,12 @@ fn setup(app: &mut tauri::App, launch_mode: LaunchMode) -> Result<(), Box<dyn st
         eprintln!("[aetherhud] NSPanel install failed, falling back to the plain window: {error}");
     }
 
-    tray::build(app.handle())?;
-
     // Hotkey registration must never break startup (#26): failures are captured into
-    // HotkeyState, logged, and the tray stays as the fallback path.
+    // HotkeyState, logged, and the tray stays as the fallback path. Register before the
+    // tray so its tooltip can show the accelerator.
     app.manage(hotkey::HotkeyState::new(hotkey::register(app.handle())));
+
+    tray::build(app.handle())?;
 
     window::spawn_supervisor(Arc::clone(&hud));
     window::spawn_reveal_fallback(Arc::clone(&hud));

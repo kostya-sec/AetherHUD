@@ -4,11 +4,10 @@ export {
   createHudStore,
   hudReducer,
 } from "./state";
-export { resolveGlobalKeyDown } from "./keyboard";
-export type { HudKeyAction, KeyDownLike } from "./keyboard";
+export { COMPOSITION_GRACE_MS, resolveGlobalKeyDown } from "./keyboard";
+export type { HudKeyAction, KeyDownLike, KeyGuardContext } from "./keyboard";
 export {
   selectHudPhase,
-  selectInputLocked,
   selectKeyHints,
   selectSearchExpanded,
   selectSearchFocusRequest,

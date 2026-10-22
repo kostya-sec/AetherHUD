@@ -5,8 +5,8 @@ import {
   createHudStore,
   hudReducer,
   resolveGlobalKeyDown,
+  COMPOSITION_GRACE_MS,
   selectHudPhase,
-  selectInputLocked,
   selectKeyHints,
   selectSearchExpanded,
   selectSearchFocusRequest,
@@ -90,17 +90,15 @@ describe("HUD 默认态（S0）", () => {
 });
 
 describe("HUD 显隐阶段", () => {
-  it("收起开始进入 dismissing 并锁定输入；再次唤出回到 visible", () => {
+  it("收起开始进入 dismissing；再次唤出回到 visible", () => {
     const visible = createDefaultHudState();
-    expect(selectInputLocked(visible)).toBe(false);
+    expect(selectHudPhase(visible)).toBe("visible");
 
     const dismissing = hudReducer(visible, { type: "dismiss-start" });
     expect(selectHudPhase(dismissing)).toBe("dismissing");
-    expect(selectInputLocked(dismissing)).toBe(true);
 
     const summoned = hudReducer(dismissing, { type: "summon" });
     expect(selectHudPhase(summoned)).toBe("visible");
-    expect(selectInputLocked(summoned)).toBe(false);
   });
 
   it("收起期间忽略展开/折叠/输入命令，避免动画中改界面", () => {
@@ -161,6 +159,29 @@ describe("全局键位守卫（Esc 收起 / 收起期间吞键 / 输入法让行
       "swallow",
     );
     expect(resolveGlobalKeyDown(plainKey("Process"), "dismissing")).toBe("swallow");
+  });
+
+  it("组合结束后 100ms 内的 Esc 不收起（确认键可能晚于 compositionend）", () => {
+    const composedAt = 1000;
+    expect(
+      resolveGlobalKeyDown(plainKey("Escape"), "visible", {
+        now: composedAt + COMPOSITION_GRACE_MS - 1,
+        compositionEndedAt: composedAt,
+      }),
+    ).toBe("ignore");
+    expect(
+      resolveGlobalKeyDown(plainKey("Escape"), "visible", {
+        now: composedAt + COMPOSITION_GRACE_MS,
+        compositionEndedAt: composedAt,
+      }),
+    ).toBe("dismiss");
+    // 从未组合过时不受宽限窗影响。
+    expect(
+      resolveGlobalKeyDown(plainKey("Escape"), "visible", {
+        now: 10,
+        compositionEndedAt: null,
+      }),
+    ).toBe("dismiss");
   });
 });
 

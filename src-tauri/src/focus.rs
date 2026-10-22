@@ -5,7 +5,7 @@
 //! `Send + Sync` and can live in a `Mutex` across the animation, tray and hotkey
 //! threads.
 
-use tauri::WebviewWindow;
+use tauri::{AppHandle, WebviewWindow};
 
 /// Opaque reference to the previously foreground application.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,7 +36,7 @@ pub fn capture(window: &WebviewWindow) -> Option<PreviousApp> {
 /// Restores the captured application as foreground. Returns false when the OS
 /// refused (for example because the foreground lock was held elsewhere).
 #[cfg(windows)]
-pub fn restore(previous: PreviousApp) -> bool {
+pub fn restore(_app: &AppHandle, previous: PreviousApp) -> bool {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
 
@@ -49,20 +49,15 @@ pub fn restore(previous: PreviousApp) -> bool {
 #[cfg(target_os = "macos")]
 pub fn capture(window: &WebviewWindow) -> Option<PreviousApp> {
     use objc2_app_kit::NSWorkspace;
-    use tauri::Manager;
 
-    let (tx, rx) = std::sync::mpsc::channel();
     let handle = window.app_handle().clone();
-    handle
-        .run_on_main_thread(move || {
-            let workspace = NSWorkspace::sharedWorkspace();
-            let pid = workspace
-                .frontmostApplication()
-                .map(|application| application.processIdentifier());
-            let _ = tx.send(pid);
-        })
-        .ok()?;
-    let pid = rx.recv().ok()??;
+    // NSWorkspace must run on the main thread, but the caller may already be there
+    // (tray clicks and the global hotkey arrive on the main thread on macOS).
+    let pid = crate::platform::on_main_thread(&handle, || {
+        NSWorkspace::sharedWorkspace()
+            .frontmostApplication()
+            .map(|application| application.processIdentifier())
+    })??;
     if pid <= 0 || pid == std::process::id() as i32 {
         return None;
     }
@@ -71,16 +66,19 @@ pub fn capture(window: &WebviewWindow) -> Option<PreviousApp> {
 
 /// See the Windows overload above.
 #[cfg(target_os = "macos")]
-pub fn restore(previous: PreviousApp) -> bool {
+pub fn restore(app: &AppHandle, previous: PreviousApp) -> bool {
     use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
 
-    let pid = previous.raw as i32;
-    match NSRunningApplication::runningApplicationWithProcessIdentifier(pid) {
-        Some(application) => {
-            application.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows)
+    crate::platform::on_main_thread(app, move || {
+        let pid = previous.raw as i32;
+        match NSRunningApplication::runningApplicationWithProcessIdentifier(pid) {
+            Some(application) => {
+                application.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows)
+            }
+            None => false,
         }
-        None => false,
-    }
+    })
+    .unwrap_or(false)
 }
 
 /// Platforms without a focus-hand-back implementation.
@@ -91,7 +89,7 @@ pub fn capture(_window: &WebviewWindow) -> Option<PreviousApp> {
 
 /// See the Windows overload above.
 #[cfg(not(any(windows, target_os = "macos")))]
-pub fn restore(_previous: PreviousApp) -> bool {
+pub fn restore(_app: &AppHandle, _previous: PreviousApp) -> bool {
     false
 }
 

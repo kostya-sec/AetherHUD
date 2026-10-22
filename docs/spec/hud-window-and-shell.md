@@ -11,7 +11,8 @@
   - 动画 `SLIDE_DURATION = 180ms`，12ms/帧，`ease-out-cubic`；新动画通过代数计数器取消旧动画（连击不抖动）。
   - 用户切换（热键/托盘左键）防抖 `TOGGLE_DEBOUNCE = 160ms`；**显式 Esc / 关闭请求不受防抖限制**。
   - 收起动画期间前端进入 `dismissing` 阶段：吞掉所有键（含输入法事件），下一次唤出才解除。
-- 唤出顺序（Windows 前台锁）：`show → set_position(停靠位) → set_focus` 紧凑调用，然后发 `hud://summon`，最后滑入。**事件必须晚于 set_focus**，否则网页的「聚焦搜索框」会与系统焦点竞争（K1 唤出即输入）。
+- 唤出顺序（Windows 前台锁）：`show → set_position ` → `set_focus` 紧凑调用，然后发 `hud://summon`，最后滑入。**事件必须晚于 set_focus**，否则网页的「聚焦搜索框」会与系统焦点竞争（K1 唤出即输入）。滑动起点 = 窗口当前位置（已收起时即屏外停靠位），不做屏内钳制，保证「从屏外滑入」。
+- Esc 的全局判定延后一拍（`setTimeout(0)`），且组合结束（`compositionend`）后 100ms 宽限内不判定 Esc（#17 §7，WKWebView 可能先给 compositionend 再给确认键）。
 - 唤出动画期间输入立即可用；收起开始即归还焦点（见 §2）。
 
 ## 2. 焦点归还
@@ -28,7 +29,7 @@
 
 ## 4. 多显示器与 DPI
 
-- 每次唤出重新查询 `available_monitors()`，目标监视器 = 上次可见位置所在屏（否则 `current_monitor`、`primary_monitor`）；逻辑坐标 = 物理 / 各自 scaleFactor。
+- 每次唤出重新查询 `available_monitors()`，目标监视器 = 上次可见位置所在屏（否则 `current_monitor`、`primary_monitor`）。**所有监视器统一除以窗口当前 scaleFactor** 得到一个不重叠的逻辑空间（逐屏各除会使混合 DPI 下的逻辑矩形重叠、可能钳到错误屏幕）；窗口跨屏后 scaleFactor 变化，下次唤出重新换算。
 - 窗口尺寸每次都按 `outer_size / scaleFactor` 换算，并被钳制在单个监视器内（比屏幕大的窗口以监视器左上角为原点钳制）。
 - 收起时记录当前屏幕位置（含用户拖动后的位置）作为下次唤出目标；从未唤出过则居中。
 
@@ -41,14 +42,14 @@
 
 ## 6. 热键
 
-- 默认：Windows `Alt+```、macOS `Option+Space`（`global-shortcut` 插件，仅 Pressed 触发）。
+- 默认：Windows ``Alt+` ``（反引号）、macOS `Option+Space`（`global-shortcut` 插件，仅 Pressed 触发）。
 - 注册失败绝不中断启动：捕获错误 + `eprintln!` 日志 + 托盘兜底 + `HotkeyStatus`（`hud_status` IPC，供 T22 设置页显示）。
 - 展示串（`display_accelerator`）区分 Windows 文字与 macOS 符号（⌥/⌘/⇧），供托盘与设置复用。
 
 ## 7. 托盘（常驻入口）
 
 - 左键切换 HUD；右键菜单：`显示 HUD / 收起 HUD`（文案随状态切换）→ `设置…` → `关于 / 检查更新` → 分隔线 → `退出 AetherHUD`；`show_menu_on_left_click(false)`。
-- 状态只进 tooltip（`AetherHUD · 显示中/已收起`；分类中/待处理/离线挂起文案随管线票接入）。
+- 状态只进 tooltip（`AetherHUD · 显示中/已收起 · 唤出 Alt + ```）；分类中/待处理/离线挂起文案随管线票接入。
 - macOS 使用 template 图标（`icons/tray-template.png` + `icon_as_template(true)`），并设 Accessory 激活策略（不占 Dock）。
 - `设置…` / `关于` 先唤出 HUD，再发 `hud://settings/open` / `hud://about/open`，分别由 T22 / T23 消费。
 
@@ -83,7 +84,7 @@
 
 - Rust 单测：几何钳制/停靠、动画缓动、状态机（防抖/失焦宽限/打断）、hitbox 命中与 ignore 翻转、启动参数、热键解析与展示。
 - 前端单测：S0 重置与 focusRequest、dismissing 吞键、Esc 守卫、IPC 动作。
-- Windows E2E（手动脚本，不进 git）：启动唤出、立刻输入、点击穿透 EXSTYLE、热键/ Esc 收起与焦点归还、WM_CLOSE 收起、第二实例（含 `--hidden`）、`--hidden` 首次启动驻留。
+- Windows 真机手工验收清单（#24 决议：不新增 OS 壳自动化缝，v1 不做 WebDriver E2E）：启动唤出、立刻输入、点击穿透（`WS_EX_TRANSPARENT` 随 hitbox 切换）、热键/Esc 收起与焦点归还、WM_CLOSE 收起、第二实例（含 `--hidden`）、`--hidden` 首次启动驻留。本地可写脚本跑，但不入库。
 
 真机回归（本机为 Windows，macOS 未实测）：
 
@@ -92,4 +93,4 @@
 
 ## 12. v1 不做
 
-- 不做开机自启注册 UI（T22）；不建手势召回路（#16/T24）；不做 macOS 非激活面板/Spotlight 式免激活唤出；不做点击穿透的逐控件光标样式。
+- 不做开机自启注册 UI（T22）；不建手势召回路（#16/T24）；不做 macOS 非激活面板/Spotlight 式免激活唤出；不做点击穿透的逐控件光标样式；不做 HudWindow 材质/vibrancy（外观票/#8 范围）。

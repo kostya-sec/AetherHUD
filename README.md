@@ -31,7 +31,7 @@ cargo test --workspace
 
 ## 常驻行为（#26）
 
-- **唤出**：手动启动时 HUD 从屏外滑入并聚焦搜索框（0.5s 内可输入）；Windows 默认 `Alt+```、macOS 默认 `Option+Space`，可后续在设置中重绑。
+- **唤出**：手动启动时 HUD 从屏外滑入并聚焦搜索框（0.5s 内可输入）；Windows 默认 ``Alt+` ``（反引号）、macOS 默认 `Option+Space`，可后续在设置中重绑。
 - **收起**：Esc、失焦（250ms 宽限）、再次热键、托盘左键都只收起；Alt+F4 / Cmd+W / 关闭窗口经 `prevent_close` 也只收起；收起开始即把焦点归还原应用，无需点击即可继续输入。
 - **退出**只发生在托盘菜单（设置底部入口随 T22 接入），统一 `app.exit()`。
 - **托盘**：左键切换 HUD；右键菜单含 显示/收起、设置…、关于/检查更新、退出；状态只放 tooltip；macOS 使用 template 图标并隐藏 Dock 图标。
