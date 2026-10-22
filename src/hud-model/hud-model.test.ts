@@ -1,0 +1,91 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  BALL_SLOTS,
+  createDefaultHudState,
+  createHudStore,
+  hudReducer,
+  selectKeyHints,
+  selectSearchExpanded,
+  selectSearchFocusRequest,
+  selectSearchOrbVisible,
+  selectSearchQuery,
+  selectVisibleBallSlots,
+} from "./index";
+
+describe("HUD 默认态（S0）", () => {
+  it("唤出后的默认态展开搜索框并隐藏搜索球", () => {
+    const state = createDefaultHudState();
+
+    expect(state.view).toBe("default");
+    expect(selectSearchExpanded(state)).toBe(true);
+    expect(selectSearchOrbVisible(state)).toBe(false);
+    expect(selectSearchQuery(state)).toBe("");
+    expect(selectVisibleBallSlots(state).map((slot) => slot.kind)).toEqual([
+      "l3-filter",
+      "l1",
+      "l1",
+      "l1",
+      "l1",
+      "l1",
+      "quick-add",
+      "settings",
+    ]);
+  });
+
+  it("鼠标折叠搜索框后，球列顶部出现搜索球", () => {
+    const collapsed = hudReducer(createDefaultHudState(), { type: "collapse-search" });
+    const visible = selectVisibleBallSlots(collapsed);
+
+    expect(selectSearchExpanded(collapsed)).toBe(false);
+    expect(selectSearchOrbVisible(collapsed)).toBe(true);
+    expect(visible[0]?.kind).toBe("search");
+    expect(visible).toHaveLength(BALL_SLOTS.length);
+  });
+
+  it("重新展开搜索框会请求一次搜索框聚焦", () => {
+    const collapsed = hudReducer(createDefaultHudState(), { type: "collapse-search" });
+    const expanded = hudReducer(collapsed, { type: "expand-search" });
+
+    expect(selectSearchExpanded(expanded)).toBe(true);
+    expect(selectSearchFocusRequest(expanded)).toBeGreaterThan(
+      selectSearchFocusRequest(collapsed),
+    );
+  });
+
+  it("唤出重置到默认态：清空查询、重新展开搜索框并请求聚焦", () => {
+    let state = createDefaultHudState();
+    state = hudReducer(state, { type: "set-query", query: "Rust" });
+    state = hudReducer(state, { type: "collapse-search" });
+    const before = selectSearchFocusRequest(state);
+
+    const summoned = hudReducer(state, { type: "summon" });
+
+    expect(selectSearchQuery(summoned)).toBe("");
+    expect(selectSearchExpanded(summoned)).toBe(true);
+    expect(selectSearchFocusRequest(summoned)).toBeGreaterThan(before);
+  });
+
+  it("底部键位提示条占位在默认态可用", () => {
+    const hints = selectKeyHints(createDefaultHudState());
+
+    expect(hints.length).toBeGreaterThan(0);
+    expect(hints.flatMap((hint) => hint.keys)).toContain("Esc");
+  });
+});
+
+describe("HUD store", () => {
+  it("dispatch 后通知订阅者并且选择器读到新状态", () => {
+    const store = createHudStore();
+    const listener = vi.fn();
+    const unsubscribe = store.subscribe(listener);
+
+    store.dispatch({ type: "set-query", query: "rust" });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(selectSearchQuery(store.getState())).toBe("rust");
+
+    unsubscribe();
+    store.dispatch({ type: "set-query", query: "tauri" });
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
