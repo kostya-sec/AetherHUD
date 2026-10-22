@@ -8,6 +8,7 @@ import {
   type HudCommand,
   type HudState,
 } from "../hud-model";
+import { publishHitBoxes } from "../platform/hitboxes";
 import { HudBallColumn } from "./HudBallColumn";
 import { HudKeyHintBar } from "./HudKeyHintBar";
 import { HudSearchBar } from "./HudSearchBar";
@@ -31,16 +32,30 @@ export function HudShell({ state, dispatch }: HudShellProps) {
   const searchExpanded = selectSearchExpanded(state);
   const focusRequest = selectSearchFocusRequest(state);
 
-  // 唤出默认态（S0）不抢焦点：focusRequest 为 0 时保持无焦点。
-  // 只有用户显式展开搜索框（收起 → 展开）时模型才递增 focusRequest，渲染层据此移入焦点（#16/#17）。
+  // 唤出即聚焦搜索框（#16 K1）：每次唤出模型递增 focusRequest，渲染层据此把光标移进
+  // 搜索框。初始挂载（focusRequest 为 0）不抢焦点。
   // Focus synchronously in the effect; a hidden WKWebView/WebView2 may throttle rAF.
   useEffect(() => {
     if (!searchExpanded || focusRequest <= 0) return;
     searchInputRef.current?.focus();
   }, [searchExpanded, focusRequest]);
 
+  // Click-through is per hitbox: publish the interactive surfaces whenever the layout
+  // changes. The shell re-reads the window origin on every poll, so a window move or
+  // DPI change needs no re-publish.
+  useEffect(() => {
+    publishHitBoxes();
+  }, [searchExpanded]);
+
+  useEffect(() => {
+    const republish = () => publishHitBoxes();
+    window.addEventListener("resize", republish);
+    return () => window.removeEventListener("resize", republish);
+  }, []);
+
   return (
     <div
+      data-hud-phase={state.phase}
       className="relative h-screen w-screen overflow-hidden bg-transparent font-sans text-stone-100 selection:bg-amber-500/30"
       style={{
         textShadow: "0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.45)",

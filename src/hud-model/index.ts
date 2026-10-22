@@ -4,7 +4,11 @@ export {
   createHudStore,
   hudReducer,
 } from "./state";
+export { resolveGlobalKeyDown } from "./keyboard";
+export type { HudKeyAction, KeyDownLike } from "./keyboard";
 export {
+  selectHudPhase,
+  selectInputLocked,
   selectKeyHints,
   selectSearchExpanded,
   selectSearchFocusRequest,
@@ -16,6 +20,7 @@ export type {
   BallKind,
   BallSlot,
   HudCommand,
+  HudPhase,
   HudState,
   HudStore,
   HudView,

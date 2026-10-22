@@ -20,6 +20,7 @@ export function HudSearchBar({
 }: HudSearchBarProps) {
   return (
     <div
+      data-hud-hitbox
       className="pixel-box flex w-full items-center gap-2.5 rounded-xl border border-stone-700/80 px-3 py-2 transition-[border-color,box-shadow] focus-within:border-amber-500/80 focus-within:shadow-[0_0_0_1px_rgba(245,158,11,0.3),0_0_18px_rgba(245,158,11,0.16)]"
       style={hudSurfaceStyle(hudOpacity)}
     >

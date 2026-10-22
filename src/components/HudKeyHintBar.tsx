@@ -15,6 +15,7 @@ export function HudKeyHintBar({ hints }: HudKeyHintBarProps) {
     <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center px-4">
       <div
         data-hud-key-hints=""
+        data-hud-hitbox
         className="pixel-box-sm pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-full border border-stone-700/70 bg-stone-950/70 px-4 py-1.5 font-mono text-[10px] text-stone-300 backdrop-blur-md"
       >
         {hints.map((hint, index) => (

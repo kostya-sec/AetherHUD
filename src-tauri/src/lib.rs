@@ -1,45 +1,82 @@
-//! Thin OS shell only: the transparent HUD window and the IPC seam the frontend
-//! uses to reveal it after the first paint. Business behavior belongs to the
-//! future aether-core library, not here.
+//! Thin OS shell only: the resident transparent HUD window, its tray entry, the global
+//! hotkey and the IPC seam the webview uses. Business behavior belongs to
+//! `aether-core`, not here.
 
-use std::time::Duration;
+mod commands;
+mod events;
+mod focus;
+mod hotkey;
+mod platform;
+mod startup;
+mod tray;
+mod window;
+
+use std::sync::Arc;
+
 use tauri::Manager;
 
-/// Reveals and focuses the hidden HUD window.
-///
-/// This is the #4-sanctioned initial `visible:false` + `show()` path, not the HUD
-/// dismiss state machine: off-screen docking + `set_position` for summon/dismiss
-/// belongs to T02. There is no position change to apply on initial reveal.
-fn reveal(window: &tauri::WebviewWindow) -> Result<(), String> {
-    window.show().map_err(|error| error.to_string())?;
-    window.set_focus().map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-/// Called by the webview once React has mounted.
-#[tauri::command]
-fn frontend_ready(window: tauri::WebviewWindow) -> Result<(), String> {
-    reveal(&window)
-}
+use startup::{parse_launch_mode, LaunchMode};
+use window::HudWindow;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .setup(|app| {
-            // Safety net: a hidden WebView must never become an invisible zombie
-            // if the frontend fails to load or its IPC never arrives.
-            if let Some(window) = app.get_webview_window("main") {
-                let fallback = window.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_secs(3));
-                    if !fallback.is_visible().unwrap_or(false) {
-                        let _ = reveal(&fallback);
-                    }
-                });
+    let launch_mode = parse_launch_mode(std::env::args());
+
+    // #12: single-instance must be registered before every other plugin so a second
+    // process is detected and handed over before any setup code runs.
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // `--hidden` means the login item fired again: stay resident, do not summon.
+            if parse_launch_mode(argv) == LaunchMode::Resident {
+                return;
             }
+            commands::summon_existing(app);
+        }))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build());
+
+    builder
+        .setup(move |app| {
+            setup(app, launch_mode)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![frontend_ready])
+        .invoke_handler(tauri::generate_handler![
+            commands::frontend_ready,
+            commands::request_dismiss,
+            commands::set_hit_boxes,
+            commands::hud_status,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running AetherHUD");
+}
+
+fn setup(app: &mut tauri::App, launch_mode: LaunchMode) -> Result<(), Box<dyn std::error::Error>> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or("the main HUD window is missing from tauri.conf.json")?;
+
+    // macOS: pure menu-bar utility, no Dock icon (#12). The "show in Dock" setting in
+    // the general settings section flips this policy at runtime (T22).
+    #[cfg(target_os = "macos")]
+    app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+    let hud = HudWindow::attach(app.handle().clone(), window, launch_mode);
+    app.manage(Arc::clone(&hud));
+
+    // macOS: convert to an NSPanel and add the window_did_resign_key blur channel.
+    // A failure is not fatal; the plain transparent window still works.
+    #[cfg(target_os = "macos")]
+    if let Err(error) = window::install_panel(&hud) {
+        eprintln!("[aetherhud] NSPanel install failed, falling back to the plain window: {error}");
+    }
+
+    tray::build(app.handle())?;
+
+    // Hotkey registration must never break startup (#26): failures are captured into
+    // HotkeyState, logged, and the tray stays as the fallback path.
+    app.manage(hotkey::HotkeyState::new(hotkey::register(app.handle())));
+
+    window::spawn_supervisor(Arc::clone(&hud));
+    window::spawn_reveal_fallback(Arc::clone(&hud));
+
+    Ok(())
 }

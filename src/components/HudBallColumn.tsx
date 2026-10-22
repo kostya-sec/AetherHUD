@@ -132,6 +132,7 @@ export function HudBallColumn({ slots, hudOpacity, onExpandSearch }: HudBallColu
           >
             <button
               type="button"
+              data-hud-hitbox
               aria-label={slot.label}
               title={title}
               // Placeholders stay inert for clicks but must receive pointer events,

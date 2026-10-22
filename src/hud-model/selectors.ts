@@ -1,5 +1,5 @@
 import { BALL_KEY_HINTS, SEARCH_KEY_HINTS } from "./constants";
-import type { BallSlot, HudState, KeyHint } from "./types";
+import type { BallSlot, HudPhase, HudState, KeyHint } from "./types";
 
 export const selectSearchExpanded = (state: HudState): boolean => state.search.expanded;
 
@@ -9,6 +9,11 @@ export const selectSearchFocusRequest = (state: HudState): number =>
   state.search.focusRequest;
 
 export const selectSearchOrbVisible = (state: HudState): boolean => !state.search.expanded;
+
+export const selectHudPhase = (state: HudState): HudPhase => state.phase;
+
+/** True while the shell is sliding the HUD away: the keyboard router must swallow keys. */
+export const selectInputLocked = (state: HudState): boolean => state.phase === "dismissing";
 
 /** Ball slots in visual order. The search orb only exists while the search bar is collapsed. */
 export const selectVisibleBallSlots = (state: HudState): readonly BallSlot[] =>
