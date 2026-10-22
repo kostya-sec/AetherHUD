@@ -31,10 +31,11 @@ export function HudShell({ state, dispatch }: HudShellProps) {
   const searchExpanded = selectSearchExpanded(state);
   const focusRequest = selectSearchFocusRequest(state);
 
-  // 唤出即展开并聚焦搜索框（#16/#17）；focusRequest 是模型给渲染层的单调令牌。
+  // 唤出默认态（S0）不抢焦点：focusRequest 为 0 时保持无焦点。
+  // 只有用户显式展开搜索框（收起 → 展开）时模型才递增 focusRequest，渲染层据此移入焦点（#16/#17）。
   // Focus synchronously in the effect; a hidden WKWebView/WebView2 may throttle rAF.
   useEffect(() => {
-    if (!searchExpanded) return;
+    if (!searchExpanded || focusRequest <= 0) return;
     searchInputRef.current?.focus();
   }, [searchExpanded, focusRequest]);
 

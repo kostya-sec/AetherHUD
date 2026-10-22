@@ -1,8 +1,8 @@
 import { BALL_SLOTS } from "./constants";
 import type { HudCommand, HudState, HudStore } from "./types";
 
-/** The summoned default state: empty search bar, search expanded, no filters, no cards. */
-export function createDefaultHudState(focusRequest = 1): HudState {
+/** The summoned default state: empty search bar, search expanded, no focus request, no filters, no cards. */
+export function createDefaultHudState(focusRequest = 0): HudState {
   return {
     view: "default",
     search: {
@@ -17,7 +17,8 @@ export function createDefaultHudState(focusRequest = 1): HudState {
 export function hudReducer(state: HudState, command: HudCommand): HudState {
   switch (command.type) {
     case "summon":
-      return createDefaultHudState(state.search.focusRequest + 1);
+      // 唤出回到 S0：不请求聚焦，等用户显式展开搜索框再聚焦。
+      return createDefaultHudState();
 
     case "expand-search": {
       if (state.search.expanded) return state;

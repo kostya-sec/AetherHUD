@@ -13,13 +13,14 @@ import {
 } from "./index";
 
 describe("HUD 默认态（S0）", () => {
-  it("唤出后的默认态展开搜索框并隐藏搜索球", () => {
+  it("唤出后的默认态展开搜索框、隐藏搜索球且不请求聚焦", () => {
     const state = createDefaultHudState();
 
     expect(state.view).toBe("default");
     expect(selectSearchExpanded(state)).toBe(true);
     expect(selectSearchOrbVisible(state)).toBe(false);
     expect(selectSearchQuery(state)).toBe("");
+    expect(selectSearchFocusRequest(state)).toBe(0);
     expect(selectVisibleBallSlots(state).map((slot) => slot.kind)).toEqual([
       "l3-filter",
       "l1",
@@ -47,22 +48,24 @@ describe("HUD 默认态（S0）", () => {
     const expanded = hudReducer(collapsed, { type: "expand-search" });
 
     expect(selectSearchExpanded(expanded)).toBe(true);
-    expect(selectSearchFocusRequest(expanded)).toBeGreaterThan(
-      selectSearchFocusRequest(collapsed),
+    expect(selectSearchFocusRequest(collapsed)).toBe(0);
+    expect(selectSearchFocusRequest(expanded)).toBe(
+      selectSearchFocusRequest(collapsed) + 1,
     );
   });
 
-  it("唤出重置到默认态：清空查询、重新展开搜索框并请求聚焦", () => {
+  it("唤出重置到默认态：清空查询、重新展开搜索框，但不请求聚焦", () => {
     let state = createDefaultHudState();
     state = hudReducer(state, { type: "set-query", query: "Rust" });
     state = hudReducer(state, { type: "collapse-search" });
-    const before = selectSearchFocusRequest(state);
+    state = hudReducer(state, { type: "expand-search" });
+    expect(selectSearchFocusRequest(state)).toBe(1);
 
     const summoned = hudReducer(state, { type: "summon" });
 
     expect(selectSearchQuery(summoned)).toBe("");
     expect(selectSearchExpanded(summoned)).toBe(true);
-    expect(selectSearchFocusRequest(summoned)).toBeGreaterThan(before);
+    expect(selectSearchFocusRequest(summoned)).toBe(0);
   });
 
   it("底部键位提示随焦点区变化：搜索框与球列", () => {
