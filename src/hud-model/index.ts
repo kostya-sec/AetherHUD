@@ -1,4 +1,4 @@
-export { BALL_SLOTS, DEFAULT_KEY_HINTS } from "./constants";
+export { BALL_KEY_HINTS, BALL_SLOTS, SEARCH_KEY_HINTS } from "./constants";
 export {
   createDefaultHudState,
   createHudStore,

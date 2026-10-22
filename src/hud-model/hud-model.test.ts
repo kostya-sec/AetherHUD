@@ -65,11 +65,13 @@ describe("HUD 默认态（S0）", () => {
     expect(selectSearchFocusRequest(summoned)).toBeGreaterThan(before);
   });
 
-  it("底部键位提示条占位在默认态可用", () => {
-    const hints = selectKeyHints(createDefaultHudState());
+  it("底部键位提示随焦点区变化：搜索框与球列", () => {
+    const searchState = createDefaultHudState();
+    const ballState = hudReducer(searchState, { type: "collapse-search" });
 
-    expect(hints.length).toBeGreaterThan(0);
-    expect(hints.flatMap((hint) => hint.keys)).toContain("Esc");
+    expect(selectKeyHints(searchState).map((hint) => hint.label)).toContain("进结果");
+    expect(selectKeyHints(ballState).map((hint) => hint.label)).toContain("选择");
+    expect(selectKeyHints(ballState).flatMap((hint) => hint.keys)).toContain("Esc");
   });
 });
 

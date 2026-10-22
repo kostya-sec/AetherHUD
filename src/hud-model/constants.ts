@@ -17,11 +17,21 @@ export const BALL_SLOTS: readonly BallSlot[] = [
   { id: "settings", kind: "settings", label: "全局设置", placeholder: true },
 ];
 
-/** Static placeholder for the bottom hint bar; T14 replaces it with context-aware hints. */
-export const DEFAULT_KEY_HINTS: readonly KeyHint[] = [
+/**
+ * Bottom key hints for the two zones that exist in this scaffold. T14 replaces
+ * this with the full five-zone + search-bubble model.
+ */
+export const SEARCH_KEY_HINTS: readonly KeyHint[] = [
   { keys: ["Esc"], label: "收起" },
   { keys: ["Tab"], label: "换区" },
-  { keys: ["Enter"], label: "选择" },
+  { keys: ["Enter"], label: "进结果" },
   { keys: ["Mod", "Enter"], label: "入库" },
   { keys: ["?"], label: "键位表" },
+];
+
+export const BALL_KEY_HINTS: readonly KeyHint[] = [
+  { keys: ["↑", "↓"], label: "选择" },
+  { keys: ["Enter"], label: "进入" },
+  { keys: ["Tab"], label: "换区" },
+  { keys: ["Esc"], label: "收起" },
 ];

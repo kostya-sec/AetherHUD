@@ -1,4 +1,4 @@
-import { DEFAULT_KEY_HINTS } from "./constants";
+import { BALL_KEY_HINTS, SEARCH_KEY_HINTS } from "./constants";
 import type { BallSlot, HudState, KeyHint } from "./types";
 
 export const selectSearchExpanded = (state: HudState): boolean => state.search.expanded;
@@ -16,4 +16,6 @@ export const selectVisibleBallSlots = (state: HudState): readonly BallSlot[] =>
     ? state.balls.filter((slot) => slot.kind !== "search")
     : state.balls;
 
-export const selectKeyHints = (_state: HudState): readonly KeyHint[] => DEFAULT_KEY_HINTS;
+/** Bottom hints follow the current focus zone: search bar vs. ball column in T01. */
+export const selectKeyHints = (state: HudState): readonly KeyHint[] =>
+  state.search.expanded ? SEARCH_KEY_HINTS : BALL_KEY_HINTS;

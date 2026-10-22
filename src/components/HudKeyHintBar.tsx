@@ -18,7 +18,7 @@ export function HudKeyHintBar({ hints }: HudKeyHintBarProps) {
         className="pixel-box-sm pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-full border border-stone-700/70 bg-stone-950/70 px-4 py-1.5 font-mono text-[10px] text-stone-300 backdrop-blur-md"
       >
         {hints.map((hint, index) => (
-          <Fragment key={hint.label}>
+          <Fragment key={hint.keys.join("+") + hint.label}>
             {index > 0 && (
               <span aria-hidden="true" className="text-stone-600">
                 ·
@@ -37,7 +37,6 @@ export function HudKeyHintBar({ hints }: HudKeyHintBarProps) {
             </span>
           </Fragment>
         ))}
-        <span className="text-stone-500">键位提示条占位</span>
       </div>
     </div>
   );

@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef } from "react";
 import {
   selectKeyHints,
@@ -25,7 +24,7 @@ interface HudShellProps {
 
 /**
  * Pure presentation shell: every piece of HUD behavior comes from the framework-free
- * hud-model through selectors and commands.
+ * hud-model through selectors and commands. OS/window wiring lives in src/platform.
  */
 export function HudShell({ state, dispatch }: HudShellProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -33,24 +32,11 @@ export function HudShell({ state, dispatch }: HudShellProps) {
   const focusRequest = selectSearchFocusRequest(state);
 
   // 唤出即展开并聚焦搜索框（#16/#17）；focusRequest 是模型给渲染层的单调令牌。
+  // Focus synchronously in the effect; a hidden WKWebView/WebView2 may throttle rAF.
   useEffect(() => {
     if (!searchExpanded) return;
-    const frame = requestAnimationFrame(() => searchInputRef.current?.focus());
-    return () => cancelAnimationFrame(frame);
+    searchInputRef.current?.focus();
   }, [searchExpanded, focusRequest]);
-
-  // The Tauri window starts hidden to avoid the transparent-window white flash;
-  // the shell reveals it after the first render. In a plain browser this is a no-op.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      try {
-        void invoke("frontend_ready").catch(() => undefined);
-      } catch {
-        // Plain-browser dev has no Tauri IPC bridge.
-      }
-    });
-    return () => cancelAnimationFrame(frame);
-  }, []);
 
   return (
     <div
@@ -60,7 +46,7 @@ export function HudShell({ state, dispatch }: HudShellProps) {
       }}
     >
       <div className="relative mx-auto w-full max-w-5xl px-2 pt-4">
-        <RainBackground opacity={RAIN_DENSITY} />
+        <RainBackground density={RAIN_DENSITY} />
 
         <div
           data-hud-module

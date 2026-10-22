@@ -1,24 +1,27 @@
 /**
- * SAO rain + water shader layer, extracted unchanged from the accepted #7 prototype
- * (AetherHUD-gemini2, src/components/RainBackground.tsx) and adapted only to the
- * formal TypeScript/React stack. Visuals are not redesigned here.
+ * SAO rain + water shader layer, extracted from the accepted #7 prototype
+ * (AetherHUD-gemini2, src/components/RainBackground.tsx) and adapted to the formal
+ * TypeScript/React stack. Visuals are not redesigned; the only functional fixes are
+ * the orthographic-camera culling/UV correction described at the shader and plane.
  */
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
 interface RainBackgroundProps {
   /**
-   * 雨幕密度 0~1（prop 名保持 opacity 不变，但语义是「密度」）：
+   * 雨幕密度 0~1：
    * 0 = 特效完全关闭（不创建 WebGL 上下文）；
-   * >0 时雨滴数量 = Math.round(520 * opacity)（至少 40 条），
-   * 雨滴落水激起水面冲击波的概率 = 0.25 + 0.6 * opacity，
-   * 冲击波 uniform 环形缓冲固定 24 个（超出覆盖最旧）。
+   * >0 时雨滴数量 = Math.round(520 * density)（至少 40 条），
+   * 雨滴落水激起水面冲击波的概率 = 0.25 + 0.6 * density，
+   * 冲击波 uniform 环形缓冲固定 IMPACT_MAX 个（超出覆盖最旧）。
    */
-  opacity: number;
+  density: number;
 }
 
 /** 水面冲击波数量上限（着色器循环次数固定，禁止动态扩容器） */
 const IMPACT_MAX = 24;
+/** HudBallColumn 给设置球写入的标记：水面线不得越过它。 */
+const RAIN_FLOOR_SELECTOR = "[data-rain-floor]";
 const WATER_VERT = /* glsl */ `
   varying vec2 vUv;
   void main() {
@@ -42,7 +45,7 @@ const WATER_FRAG = /* glsl */ `
   uniform float uTime;
   uniform vec2 uRes;      // 容器尺寸（CSS px）
   uniform float uWaterTop; // 水面线 y（CSS px，y 向下）
-  uniform vec4 uImpacts[24]; // x, y(px), t0(s), amp
+  uniform vec4 uImpacts[${IMPACT_MAX}]; // x, y(px), t0(s), amp
 
   float hash21(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -92,7 +95,7 @@ const WATER_FRAG = /* glsl */ `
 
     // ---- 落雨冲击波：环形波峰扩散，扰动法线 + 波峰泡沫 ----
     float foam = 0.0;
-    for (int i = 0; i < 24; i++) {
+    for (int i = 0; i < ${IMPACT_MAX}; i++) {
       vec4 imp = uImpacts[i];
       float amp = imp.w;
       if (amp < 0.001) continue;
@@ -147,12 +150,12 @@ const WATER_FRAG = /* glsl */ `
  * 「设置球」元素，水面下限不低于该元素底部；否则回退容器高度 88%。
  * 总 draw call = 3（水面 1 + 雨滴 1 + 水花 1）。
  */
-export function RainBackground({ opacity }: RainBackgroundProps) {
+export function RainBackground({ density }: RainBackgroundProps) {
   const mountRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const container = mountRef.current;
-    if (!container || opacity <= 0) return;
+    if (!container || density <= 0) return;
 
     let width = container.clientWidth || 800;
     let height = container.clientHeight || 400;
@@ -172,11 +175,11 @@ export function RainBackground({ opacity }: RainBackgroundProps) {
     container.appendChild(renderer.domElement);
 
     // ---- 密度驱动的动态参数 ----
-    const density = Math.min(1, Math.max(0, opacity));
-    const DROP_COUNT = Math.max(40, Math.round(520 * density));
-    const IMPACT_PROB = 0.25 + 0.6 * density; // 雨滴落水激起水面冲击波的概率
+    const densityValue = Math.min(1, Math.max(0, density));
+    const DROP_COUNT = Math.max(40, Math.round(520 * densityValue));
+    const IMPACT_PROB = 0.25 + 0.6 * densityValue; // 雨滴落水激起水面冲击波的概率
     const SPLASH_PROB = Math.min(1, IMPACT_PROB + 0.25); // 溅起水花的概率
-    const SPLASH_POOL = Math.max(24, Math.round(160 * density)); // 水花粒子池
+    const SPLASH_POOL = Math.max(24, Math.round(160 * densityValue)); // 水花粒子池
 
     // 水面线：默认容器底部带状区，动态受 data-rain-floor 地板约束
     let waterLine = height * 0.88;
@@ -337,8 +340,8 @@ export function RainBackground({ opacity }: RainBackgroundProps) {
     let frameCount = 0;
     const updateWaterLine = () => {
       const floorEl =
-        container.querySelector('[data-rain-floor]') ??
-        container.parentElement?.querySelector('[data-rain-floor]') ??
+        container.querySelector(RAIN_FLOOR_SELECTOR) ??
+        container.parentElement?.querySelector(RAIN_FLOOR_SELECTOR) ??
         null;
       let floorY = NaN;
       if (floorEl) {
@@ -360,7 +363,7 @@ export function RainBackground({ opacity }: RainBackgroundProps) {
     const addImpact = (x: number) => {
       const bandH = Math.max(height - waterLine, 1);
       const y = waterLine + 2 + Math.random() * bandH * 0.55; // 略低于水面线，带纵深感
-      const amp = (0.45 + Math.random() * 0.6) * (0.7 + 0.3 * density);
+      const amp = (0.45 + Math.random() * 0.6) * (0.7 + 0.3 * densityValue);
       const v = impactData[impactCursor];
       impactCursor = (impactCursor + 1) % IMPACT_MAX;
       v.set(x, y, time, amp);
@@ -448,10 +451,10 @@ export function RainBackground({ opacity }: RainBackgroundProps) {
       splashMat.dispose();
       renderer.dispose();
     };
-    // opacity 语义是密度：密度变化时重建整个场景（Float32Array 尺寸随之变化）
-  }, [opacity]);
+    // 密度变化时重建整个场景（Float32Array 尺寸随之变化）
+  }, [density]);
 
-  if (opacity <= 0) return null;
+  if (density <= 0) return null;
 
   return (
     <div

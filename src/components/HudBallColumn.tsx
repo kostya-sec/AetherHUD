@@ -1,5 +1,6 @@
 import { Layers, ListFilter, Plus, Search, Sliders } from "lucide-react";
 import type { BallKind, BallSlot } from "../hud-model";
+import { hudSurfaceStyle } from "./hudSurface";
 
 interface HudBallColumnProps {
   slots: readonly BallSlot[];
@@ -40,17 +41,15 @@ export function HudBallColumn({ slots, hudOpacity, onExpandSearch }: HudBallColu
             <button
               type="button"
               aria-label={slot.label}
-              aria-disabled={interactive ? undefined : true}
               title={title}
+              disabled={!interactive}
+              tabIndex={interactive ? undefined : -1}
               onClick={interactive ? onExpandSearch : undefined}
-              style={{
-                backgroundColor: `rgba(28, 25, 23, ${hudOpacity})`,
-                backdropFilter: "blur(8px)",
-              }}
+              style={hudSurfaceStyle(hudOpacity)}
               className={`pixel-box hud-focus-ring flex h-12 w-12 items-center justify-center rounded-full border-2 transition-colors ${
                 interactive
                   ? "cursor-pointer border-stone-700 text-stone-300 hover:border-amber-400 hover:text-white"
-                  : "cursor-default border-stone-700 text-stone-300 hover:border-amber-400/80 hover:text-white"
+                  : "cursor-default border-stone-700/70 text-stone-400/80"
               }`}
             >
               <Icon className="h-5 w-5" aria-hidden="true" />
