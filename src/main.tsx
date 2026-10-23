@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { createDefaultHudState, createHudStore } from "./hud-model";
 import { connectHudBridge } from "./platform/hudBridge";
+import { connectHitBoxPublishing } from "./platform/hitboxes";
 import { connectInboxEvents } from "./platform/inbox";
 import { connectSettingsEvents } from "./platform/settings";
 import { loadHudNavigation } from "./platform/navigation";
@@ -35,8 +36,12 @@ async function boot(): Promise<void> {
   await connectInboxEvents(store);
   // 托盘「设置…」「关于」入口（hud://settings/open、hud://about/open）：打开设置弹层。
   await connectSettingsEvents(store);
+  // 点击穿透命中区：hud://summon（窗口上屏）与视口/布局变化后重测，避免沿用窗口
+  // 隐藏期间量到的矩形（#29 回归）。装在 frontend_ready 之前，首次唤出不漏。
+  const hitBoxes = connectHitBoxPublishing();
   // The Tauri window is created hidden to avoid a transparent-window white flash.
-  revealWindowAfterFirstFrame();
+  // 窗口在 frontend_ready 里才上屏：上屏后再量一次，替换掉挂载时的那份。
+  void revealWindowAfterFirstFrame().then(() => hitBoxes.request());
 }
 
 void boot();

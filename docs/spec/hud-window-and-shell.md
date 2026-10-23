@@ -38,6 +38,7 @@
 
 - 窗口常态 `set_ignore_cursor_events(true)`（Windows 即 `WS_EX_TRANSPARENT|WS_EX_LAYERED`）。
 - 前端把带 `data-hud-hitbox` 的元素矩形（CSS px，相对窗口）通过 `set_hit_boxes` 上报；布局变化（搜索框展开/折叠、resize）时整体替换。
+- 首次测量发生在窗口仍隐藏（未映射）期间，量到的视口不是用户点击时的视口，**不能沿用**：`hud://summon`（窗口已上屏）与 `frontend_ready` 返回后都要重测，另有 resize / visibilitychange / ResizeObserver / 入场动画结束兜底（#29 回归：初次启动点击球列被判为点击外部）。重测合并到下一拍，且不依赖 `requestAnimationFrame`（隐藏的 webview 会暂停帧）。
 - Rust supervisor 约 50ms 轮询物理光标位置，用**当前**窗口原点与 scaleFactor 换算 hitbox 后做命中测试，仅在结论变化时切换 ignore 标志（负坐标/多屏安全）。
 - HUD 收起 / 滑出期间强制穿透。实测：空白区域 `WS_EX_TRANSPARENT` 置位、搜索框区域清除并由 HUD 接收点击。
 - 弹窗（快速录入）与列表视图（收件箱）打开时铺满整窗的 backdrop 并标 `data-hud-hitbox`：弹窗内的点击始终落在 webview 里，不会穿透到桌面触发失焦收起，录入过程不被打断（#28）。

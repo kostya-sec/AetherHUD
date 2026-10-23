@@ -91,7 +91,8 @@ export function HudShell({ state, dispatch }: HudShellProps) {
   // Click-through is per hitbox: publish the interactive surfaces whenever the layout
   // changes (search bar, L3 bar, L2 panel, notice strip, taxonomy arrival). The shell
   // re-reads the window origin on every poll, so a window move or DPI change needs no
-  // re-publish.
+  // re-publish. Window/viewport signals (summon, resize, visibility, entrance
+  // animation) are handled by `connectHitBoxPublishing` in src/platform/hitboxes.ts.
   const navigationKey = state.navigation?.effectiveVersion ?? "none";
   const panelKey = panel ? `${panel.l1.id}:${panel.activeL2Id ?? "all"}` : "closed";
   // 位置也要进依赖：搜索框展开/折叠会把 L3 球上移一颗，L3 条随之换 top。
@@ -126,12 +127,6 @@ export function HudShell({ state, dispatch }: HudShellProps) {
     void loadCredentialStatuses(dispatch);
     void loadProviderProfile(dispatch);
   }, [settingsOpen, dispatch]);
-
-  useEffect(() => {
-    const republish = () => publishHitBoxes();
-    window.addEventListener("resize", republish);
-    return () => window.removeEventListener("resize", republish);
-  }, []);
 
   return (
     <div
