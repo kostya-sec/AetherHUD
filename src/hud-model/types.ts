@@ -70,7 +70,12 @@ export interface L2PanelState {
   readonly activeL2Id: string | null;
 }
 
-/** L3 标签条本票只落结构与顺序（筛选行为在 #34）。 */
+/**
+ * L3 标签条本票只落结构与顺序（筛选行为在 #34）。
+ *
+ * `expanded` 只表示标签条的展开可见性（与 L2 面板同屏互斥），不是筛选选中态；
+ * #34 的标签选中/筛选状态是独立模型，不受折叠标签条影响。
+ */
 export interface L3BarState {
   readonly expanded: boolean;
 }

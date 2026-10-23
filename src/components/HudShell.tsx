@@ -13,7 +13,7 @@ import {
   type HudState,
 } from "../hud-model";
 import { publishHitBoxes } from "../platform/hitboxes";
-import { ballTopOffset } from "./ballLayout";
+import { ballTopOffset, ballTopOffsetFor } from "./ballLayout";
 import { HudBallColumn } from "./HudBallColumn";
 import { HudKeyHintBar } from "./HudKeyHintBar";
 import { HudL2Panel } from "./HudL2Panel";
@@ -51,6 +51,10 @@ export function HudShell({ state, dispatch }: HudShellProps) {
     : -1;
   const panelTop = activeBallIndex >= 0 ? ballTopOffset(activeBallIndex) : 0;
 
+  // L3 条同样原地展开：top 取当前可见球列里 L3 筛选球的索引（搜索框展开/折叠会
+  // 改变球列组成），不写死 top；两支同屏互斥由模型保证。
+  const l3FilterTop = ballTopOffsetFor(slots, (slot) => slot.kind === "l3-filter");
+
   // 点击搜索球（expand-search）时模型递增 focusRequest，渲染层据此把光标移进搜索框。
   // 唤出本身不聚焦（2026-10-23 需求变更：默认球列 + 搜索框收起），初始 focusRequest 为 0。
   // Focus synchronously in the effect; a hidden WKWebView/WebView2 may throttle rAF.
@@ -65,9 +69,11 @@ export function HudShell({ state, dispatch }: HudShellProps) {
   // re-publish.
   const navigationKey = state.navigation?.effectiveVersion ?? "none";
   const panelKey = panel ? `${panel.l1.id}:${panel.activeL2Id ?? "all"}` : "closed";
+  // 位置也要进依赖：搜索框展开/折叠会把 L3 球上移一颗，L3 条随之换 top。
+  const l3BarKey = l3Bar.expanded ? `open:${l3FilterTop ?? "none"}` : "closed";
   useEffect(() => {
     publishHitBoxes();
-  }, [searchExpanded, l3Bar.expanded, notice !== null, panelKey, navigationKey]);
+  }, [searchExpanded, l3BarKey, notice !== null, panelKey, navigationKey]);
 
   useEffect(() => {
     const republish = () => publishHitBoxes();
@@ -107,15 +113,7 @@ export function HudShell({ state, dispatch }: HudShellProps) {
             />
           )}
 
-          {l3Bar.expanded && (
-            <HudL3Bar
-              mediaChips={l3Bar.mediaChips}
-              formatTags={l3Bar.formatTags}
-              hudOpacity={HUD_OPACITY}
-              onCollapse={() => dispatch({ type: "collapse-l3-bar" })}
-            />
-          )}
-
+          {/* 展开条都挂在球列右侧的同一包含块里（L2 面板 / L3 条原地展开）。 */}
           <div className="relative flex w-full items-start">
             <HudBallColumn
               slots={slots}
@@ -133,6 +131,16 @@ export function HudShell({ state, dispatch }: HudShellProps) {
                 hudOpacity={HUD_OPACITY}
                 top={panelTop}
                 onSelectL2={(l2Id) => dispatch({ type: "activate-l2", l2Id })}
+              />
+            )}
+
+            {l3Bar.expanded && l3FilterTop !== null && (
+              <HudL3Bar
+                mediaChips={l3Bar.mediaChips}
+                formatTags={l3Bar.formatTags}
+                hudOpacity={HUD_OPACITY}
+                top={l3FilterTop}
+                onCollapse={() => dispatch({ type: "collapse-l3-bar" })}
               />
             )}
           </div>

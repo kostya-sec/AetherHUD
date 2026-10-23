@@ -189,7 +189,7 @@ describe("L1 球原地展开 L2 面板", () => {
 });
 
 describe("L3 标签条（本票只渲染结构与顺序）", () => {
-  it("点击 L3 球展开，形态标签保持生效树顺序；再次点击收起", () => {
+  it("点击 L3 球展开，形态标签保持生效树顺序；再次点击折叠", () => {
     let state = stateWithNavigation();
     expect(selectL3Bar(state).expanded).toBe(false);
     state = hudReducer(state, { type: "toggle-l3-bar" });
@@ -208,6 +208,38 @@ describe("L3 标签条（本票只渲染结构与顺序）", () => {
     state = hudReducer(state, { type: "toggle-l3-bar" });
     state = hudReducer(state, { type: "collapse-l3-bar" });
     expect(selectL3Bar(state).expanded).toBe(false);
+  });
+
+  it("开 L2 后展开 L3：L2 面板折叠，L3 条展开（同屏只保留一条展开条）", () => {
+    let state = stateWithNavigation();
+    state = hudReducer(state, { type: "activate-l1", l1Id: "l1_tech" });
+    expect(selectL2Panel(state)?.l1.id).toBe("l1_tech");
+
+    state = hudReducer(state, { type: "toggle-l3-bar" });
+    expect(selectL3Bar(state).expanded).toBe(true);
+    expect(selectL2Panel(state)).toBeNull();
+    expect(selectActiveL1Id(state)).toBeNull();
+  });
+
+  it("展开 L3 后点 L1：L3 条折叠，L2 面板展开", () => {
+    let state = hudReducer(stateWithNavigation(), { type: "toggle-l3-bar" });
+    expect(selectL3Bar(state).expanded).toBe(true);
+
+    state = hudReducer(state, { type: "activate-l1", l1Id: "l1_tech" });
+    expect(selectL3Bar(state).expanded).toBe(false);
+    expect(selectL2Panel(state)?.l1.id).toBe("l1_tech");
+  });
+
+  it("折叠 L3 后 L2 面板仍折叠（不自动恢复上一条展开条）", () => {
+    let state = stateWithNavigation();
+    state = hudReducer(state, { type: "activate-l1", l1Id: "l1_tech" });
+    state = hudReducer(state, { type: "toggle-l3-bar" });
+    expect(selectL2Panel(state)).toBeNull();
+
+    state = hudReducer(state, { type: "toggle-l3-bar" });
+    expect(selectL3Bar(state).expanded).toBe(false);
+    expect(selectL2Panel(state)).toBeNull();
+    expect(selectActiveL1Id(state)).toBeNull();
   });
 });
 

@@ -89,11 +89,18 @@ export function hudReducer(state: HudState, command: HudCommand): HudState {
     case "activate-l1": {
       const l1 = state.navigation?.l1s.find((node) => node.id === command.l1Id);
       if (!l1) return state;
-      // 同一 L1 再点一次 = 原地收起面板。
+      // 同一 L1 再点一次 = 原地折叠面板。
       if (state.l2Panel?.l1Id === l1.id) {
         return { ...state, l2Panel: null };
       }
-      return { ...state, l2Panel: { l1Id: l1.id, activeL2Id: null } };
+      // 同屏只显示一条展开条：打开/切换 L1 时折叠 L3 条，否则垂直球列上相邻球
+      // （尤其 L3 球后紧邻的「00 未分类」）会让 L2 面板与 L3 条互相重叠。
+      // 这里只改 L3 条的**展开可见性**，不触碰 #34 的标签筛选选中态。
+      return {
+        ...state,
+        l2Panel: { l1Id: l1.id, activeL2Id: null },
+        l3Bar: { expanded: false },
+      };
     }
 
     case "activate-l2": {
@@ -110,8 +117,14 @@ export function hudReducer(state: HudState, command: HudCommand): HudState {
       return { ...state, l2Panel: { ...panel, activeL2Id: command.l2Id } };
     }
 
-    case "toggle-l3-bar":
-      return { ...state, l3Bar: { expanded: !state.l3Bar.expanded } };
+    case "toggle-l3-bar": {
+      if (state.l3Bar.expanded) {
+        return { ...state, l3Bar: { expanded: false } };
+      }
+      // 同屏只显示一条展开条：展开 L3 条时折叠 L2 面板（两支不会同时占位）。
+      // 折叠 L2 不改变任何筛选态——可见性互斥与 #34 的标签选中态是两回事。
+      return { ...state, l2Panel: null, l3Bar: { expanded: true } };
+    }
 
     case "collapse-l3-bar": {
       if (!state.l3Bar.expanded) return state;
