@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
+  resolveEscapeCommand,
   resolveGlobalKeyDown,
   selectHudPhase,
   type HudKeyAction,
   type HudStore,
   type KeyDownLike,
+  type KeyGuardContext,
 } from "../hud-model";
 import { showStartupNotice } from "./navigation";
 
@@ -44,6 +46,34 @@ export function applyKeyAction(
   if (action === "dismiss") {
     schedule(dismissHud);
   }
+}
+
+/**
+ * The HUD's global key guard: IME/dismiss phase first, then Esc's "close the top
+ * layer before dismissing" rule (#17 §5.1), then the shell dismiss request.
+ *
+ * Exported so the Esc layering (quick input → inbox → settings row → dismiss) is
+ * tested against the real reducer without a DOM.
+ */
+export function applyGlobalKey(
+  event: KeyboardLike,
+  store: HudStore,
+  context: KeyGuardContext,
+  schedule: Scheduler = nextTask,
+): void {
+  const state = store.getState();
+  const action = resolveGlobalKeyDown(event, selectHudPhase(state), context);
+  if (action === "dismiss") {
+    const command = resolveEscapeCommand(state);
+    if (command) {
+      // Esc 的判定延后一拍（#17 §7）：不与输入法事件同帧竞争；关最上层而不是收起 HUD。
+      event.preventDefault();
+      event.stopPropagation();
+      schedule(() => store.dispatch(command));
+      return;
+    }
+  }
+  applyKeyAction(action, event, schedule);
 }
 
 /** Asks the OS shell to slide the HUD away (Esc). */
@@ -91,11 +121,10 @@ export async function connectHudBridge(store: HudStore): Promise<() => void> {
   };
 
   const onKeyDown = (event: KeyboardEvent): void => {
-    const action = resolveGlobalKeyDown(event, selectHudPhase(store.getState()), {
+    applyGlobalKey(event, store, {
       now: performance.now(),
       compositionEndedAt,
     });
-    applyKeyAction(action, event);
   };
 
   window.addEventListener("compositionend", onCompositionEnd, { capture: true });

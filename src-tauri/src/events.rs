@@ -12,3 +12,7 @@ pub const OPEN_SETTINGS: &str = "hud://settings/open";
 
 /// Tray menu "关于 / 检查更新" (the update check itself lands in T23).
 pub const OPEN_ABOUT: &str = "hud://about/open";
+
+/// A new entry landed in the inbox (or a duplicate refreshed its last_seen_at).
+/// The inbox list view reloads its first page; a closed inbox just marks itself stale.
+pub const INBOX_UPDATED: &str = "hud://inbox-updated";

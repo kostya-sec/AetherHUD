@@ -1,5 +1,6 @@
 import { Search, X } from "lucide-react";
 import type { RefObject } from "react";
+import { isIngestShortcut } from "../hud-model";
 import { hudSurfaceStyle } from "./hudSurface";
 
 interface HudSearchBarProps {
@@ -8,6 +9,8 @@ interface HudSearchBarProps {
   hudOpacity: number;
   onQueryChange: (query: string) => void;
   onCollapse: () => void;
+  /** Mod+Enter：打开快速录入弹窗并带入当前输入（#17 §5.2），搜索行为在 #30。 */
+  onIngestShortcut: (query: string) => void;
 }
 
 /** Top search bar expanded from the search ball, copied from the #7 desktop-hud layer. */
@@ -17,6 +20,7 @@ export function HudSearchBar({
   hudOpacity,
   onQueryChange,
   onCollapse,
+  onIngestShortcut,
 }: HudSearchBarProps) {
   return (
     <div
@@ -29,7 +33,13 @@ export function HudSearchBar({
         ref={inputRef}
         value={query}
         onChange={(event) => onQueryChange(event.target.value)}
-        placeholder="搜索…"
+        onKeyDown={(event) => {
+          // 普通 Enter 留给搜索（#30）；Mod+Enter 显式入库。
+          if (!isIngestShortcut(event.nativeEvent)) return;
+          event.preventDefault();
+          onIngestShortcut(query);
+        }}
+        placeholder="搜索（Mod+Enter 入库）…"
         aria-label="搜索"
         className="min-w-0 flex-1 rounded bg-transparent font-mono text-sm text-stone-100 outline-none placeholder:text-stone-500"
       />

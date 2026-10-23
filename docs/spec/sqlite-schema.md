@@ -348,7 +348,7 @@ lifecycle:       active → archived（封存）→ active
 1. 按空白 + 中英文边界切段。
 2. 每段用双引号包裹，段内双引号双写（`"` → `""`）。
 3. 段间用 `AND` 连接（多词收敛）；需要前缀补全时，`*` 放在引号外、最后一个片段之后。
-4. **< 3 字符**（按 Unicode 字符计）的查询走 `LIKE '%…%'` 兜底（转义 `%`、`_`，不加 `ESCAPE`），10k 级 3–6 ms。
+4. **< 3 字符**（按 Unicode 字符计）的查询走 `LIKE '%…%'` 兜底（转义 `%`、`_`；SQLite 只有带 `ESCAPE` 子句时反斜杠才是转义符，实现固定写成 `LIKE ? ESCAPE '\'`，见 `aether-core::search`），10k 级 3–6 ms。
 
 **排序**：`ORDER BY rank`（= bm25，负值，越小越相关）；标题加权用 `bm25(fts_entries, 10.0, 1.0, 1.0, 1.0)`。
 
@@ -376,9 +376,10 @@ lifecycle:       active → archived（封存）→ active
 ## 11. 迁移与备份
 
 - 框架：`rusqlite_migration`（`PRAGMA user_version`，顺序执行 + 原子提交 + 降级检测）。
-- v1 迁移内容：本文件 §3–§4 全部 DDL + 触发器 + `rebuild_fts`。
-- 迁移前自动 `VACUUM INTO` 备份到 `backups/`，并把 `taxonomy.overlay.json` 一并复制为 `backups/taxonomy.overlay.<ts>.json`，保留最近 5 份。
-- 大数据量 `rebuild`（FTS 重建）放在迁移之后、可中断、带进度；不放进事务迁移脚本。
+- v1 迁移内容：本文件 §3–§4 全部 DDL + 触发器 + `rebuild_fts`（v1 首建时 FTS 为空，重建是 no-op；#28 落地）。
+- 迁移前自动 `VACUUM INTO` 备份到 `backups/`，并把 `taxonomy.overlay.json` 一并复制为 `backups/taxonomy.overlay.<ts>.json`，保留最近 5 份（随 #43 接入）。
+- 大数据量 `rebuild`（FTS 重建）放在迁移之后、可中断、带进度；不放进事务迁移脚本（v1 空库首建的 no-op rebuild 除外）。
+- v1 尚未发布：#27 的临时 v1 只有 `meta`，无用户数据；#28 把 §3 全表并入 migration v1。发布后迁移只追加、不再修改（`Database::open` 会对 user_version=1 但缺表的旧开发库报可读错误）。
 - 迁移脚本改动（后续版本）：只追加，不改已发布迁移。
 
 ## 12. 容量旋钮
@@ -387,6 +388,9 @@ lifecycle:       active → archived（封存）→ active
 |---|---|---|
 | `BODY_STORE_CHARS` | 1500 | `body_md` 存储上限（字符）；覆盖 PRD 分类上下文 |
 | `FTS_EXCERPT_CHARS` | 500 | `excerpt` 长度 = 进 FTS 的正文；也是「搜索覆盖」旋钮 |
+| `TITLE_MAX_CHARS` | 120 | 纯文本录入的标题截断（原文仍存 `body_md`）；URL 条目标题暂为原始 URL |
+| `INBOX_PAGE_SIZE` | 50 | 收件箱 keyset 分页页大小（#28） |
+| `INBOX_QUERY_LIMIT_MAX` | 200 | 存储层单次分页上限，防误用 |
 
 体积估算（1 万条目）：正文 ~45 MB + FTS 增量 ~70 MB + 元数据 ≈ **100–130 MB**。若条目数长期超过 2 万，或用户反馈「搜不到正文深处」，评估切换到 `jieba-rs` 字符级预分词（索引 ~1.9×，全文覆盖）——届时只需重建 FTS，不动业务表。
 

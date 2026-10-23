@@ -3,11 +3,17 @@
 
 use std::sync::Arc;
 
+use aether_core::adapters::{Clock, SystemClock};
+use aether_core::inbox::{InboxCursor, InboxPage};
+use aether_core::ingest::IngestOutcome;
 use aether_core::navigation::HudNavigation;
 use aether_core::notice::HudNotice;
 use serde::Deserialize;
 use tauri::AppHandle;
+use tauri::Emitter;
 use tauri::Manager;
+
+use crate::events;
 
 use crate::runtime::CoreState;
 use crate::window::geometry::LogicalRect;
@@ -60,6 +66,28 @@ pub fn hud_navigation(state: tauri::State<'_, CoreState>) -> Result<HudNavigatio
 #[tauri::command]
 pub fn hud_take_notices(state: tauri::State<'_, CoreState>) -> Vec<HudNotice> {
     state.take_notices()
+}
+
+/// 本地录入（#28）：URL 进 fetch stage、纯文本直入 classify stage；成功后推
+/// `hud://inbox-updated`，收件箱视图据此刷新。
+#[tauri::command]
+pub fn ingest_text(
+    app: AppHandle,
+    state: tauri::State<'_, CoreState>,
+    text: String,
+) -> Result<IngestOutcome, String> {
+    let outcome = state.ingest_text(&text, SystemClock.now_ms())?;
+    let _ = app.emit(events::INBOX_UPDATED, ());
+    Ok(outcome)
+}
+
+/// 收件箱一页（50 条/页，created_at 倒序 keyset 分页；#28）。
+#[tauri::command]
+pub fn hud_inbox(
+    state: tauri::State<'_, CoreState>,
+    cursor: Option<InboxCursor>,
+) -> Result<InboxPage, String> {
+    state.inbox_page(cursor)
 }
 
 /// Second launch without `--hidden`: summon the already running HUD (#12).

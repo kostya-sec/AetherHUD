@@ -4,7 +4,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { applyKeyAction, dismissHud } from "./hudBridge";
+import {
+  createDefaultHudState,
+  createHudStore,
+  hudReducer,
+  selectInbox,
+  selectQuickInput,
+} from "../hud-model";
+import { applyGlobalKey, applyKeyAction, dismissHud } from "./hudBridge";
 
 const immediately = (task: () => void): void => task();
 
@@ -60,5 +67,59 @@ describe("HUD 全局键位动作", () => {
   it("Esc 收起走同一条 IPC（供浏览器内联调试复用）", () => {
     dismissHud();
     expect(invokeMock).toHaveBeenCalledWith("request_dismiss");
+  });
+});
+
+describe("Esc 先关最上层，再收起 HUD", () => {
+  const immediately = (task: () => void): void => task();
+  const noComposition = { now: 0, compositionEndedAt: null };
+
+  beforeEach(() => {
+    invokeMock.mockClear();
+  });
+
+  it("快速录入弹窗打开时 Esc 只关弹窗，不收起 HUD", () => {
+    const store = createHudStore(
+      hudReducer(createDefaultHudState(), { type: "open-quick-input", seed: "rust" }),
+    );
+    const event = fakeEvent();
+
+    applyGlobalKey(event, store, noComposition, immediately);
+
+    expect(selectQuickInput(store.getState())).toBeNull();
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("收件箱视图打开时 Esc 返回 HUD", () => {
+    const store = createHudStore(
+      hudReducer(createDefaultHudState(), { type: "open-inbox" }),
+    );
+
+    applyGlobalKey(fakeEvent(), store, noComposition, immediately);
+
+    expect(selectInbox(store.getState()).open).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("没有浮层时 Esc 仍请求外壳收起", () => {
+    const store = createHudStore(createDefaultHudState());
+
+    applyGlobalKey(fakeEvent(), store, noComposition, immediately);
+
+    expect(invokeMock).toHaveBeenCalledWith("request_dismiss");
+  });
+
+  it("输入法组合态 Esc 让给输入法，不关弹窗也不收起", () => {
+    const store = createHudStore(
+      hudReducer(createDefaultHudState(), { type: "open-quick-input", seed: "rust" }),
+    );
+    const event = { ...fakeEvent(), isComposing: true };
+
+    applyGlobalKey(event, store, { now: 10, compositionEndedAt: null }, immediately);
+
+    expect(selectQuickInput(store.getState())?.seed).toBe("rust");
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 });

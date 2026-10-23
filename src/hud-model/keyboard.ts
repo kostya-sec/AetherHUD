@@ -1,4 +1,4 @@
-import type { HudPhase } from "./types";
+import type { HudCommand, HudPhase, HudState } from "./types";
 
 /** The subset of `KeyboardEvent` the HUD global guard reads. */
 export interface KeyDownLike {
@@ -9,6 +9,8 @@ export interface KeyDownLike {
   readonly metaKey?: boolean;
   readonly altKey?: boolean;
   readonly shiftKey?: boolean;
+  /** 长按连发：动作键（Mod+Enter 等）必须忽略 repeat（#17 §7）。 */
+  readonly repeat?: boolean;
 }
 
 /**
@@ -74,4 +76,30 @@ function isComposing(input: KeyDownLike): boolean {
   return (
     input.isComposing === true || input.keyCode === 229 || input.key === "Process"
   );
+}
+
+/**
+ * Mod+Enter = 打开快速录入弹窗并带入当前输入（#17 §5.2）。
+ *
+ * Mod = Windows Ctrl / macOS Cmd；macOS 也接受 Ctrl（#24 §3）。Alt+Enter 是系统/
+ * 输入法组合键，不触发；输入法组合态让给输入法。
+ */
+export function isIngestShortcut(input: KeyDownLike): boolean {
+  if (isComposing(input) || input.repeat === true) return false;
+  if (input.key !== "Enter") return false;
+  if (input.altKey === true) return false;
+  return input.ctrlKey === true || input.metaKey === true;
+}
+
+/**
+ * Esc 的「退一层」顺序（#17 §5.1）：弹窗 → 列表视图 → 展开的入口行 → 收起 HUD。
+ *
+ * 返回 null 表示没有可关闭的层，调用方按全局 Esc 收起 HUD。收起动画/输入法组合态
+ * 仍由 resolveGlobalKeyDown 先行处理。
+ */
+export function resolveEscapeCommand(state: HudState): HudCommand | null {
+  if (state.quickInput !== null) return { type: "close-quick-input" };
+  if (state.inbox.open) return { type: "close-inbox" };
+  if (state.settingsRow.expanded) return { type: "collapse-settings-row" };
+  return null;
 }

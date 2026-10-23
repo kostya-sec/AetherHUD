@@ -26,6 +26,15 @@ export function createDefaultHudState(
     navigation,
     l2Panel: null,
     l3Bar: { expanded: false },
+    quickInput: null,
+    settingsRow: { expanded: false },
+    inbox: {
+      open: false,
+      entries: [],
+      nextCursor: null,
+      loading: false,
+      revision: 0,
+    },
     notice: null,
     phase: "visible",
   };
@@ -100,6 +109,7 @@ export function hudReducer(state: HudState, command: HudCommand): HudState {
         ...state,
         l2Panel: { l1Id: l1.id, activeL2Id: null },
         l3Bar: { expanded: false },
+        settingsRow: { expanded: false },
       };
     }
 
@@ -123,12 +133,129 @@ export function hudReducer(state: HudState, command: HudCommand): HudState {
       }
       // 同屏只显示一条展开条：展开 L3 条时折叠 L2 面板（两支不会同时占位）。
       // 折叠 L2 不改变任何筛选态——可见性互斥与 #34 的标签选中态是两回事。
-      return { ...state, l2Panel: null, l3Bar: { expanded: true } };
+      return {
+        ...state,
+        l2Panel: null,
+        settingsRow: { expanded: false },
+        l3Bar: { expanded: true },
+      };
     }
 
     case "collapse-l3-bar": {
       if (!state.l3Bar.expanded) return state;
       return { ...state, l3Bar: { expanded: false } };
+    }
+
+    case "open-quick-input":
+      return {
+        ...state,
+        quickInput: { seed: command.seed, submitting: false },
+      };
+
+    case "close-quick-input": {
+      if (state.quickInput === null) return state;
+      return { ...state, quickInput: null };
+    }
+
+    case "set-quick-input-submitting": {
+      if (state.quickInput === null) return state;
+      if (state.quickInput.submitting === command.submitting) return state;
+      return {
+        ...state,
+        quickInput: { ...state.quickInput, submitting: command.submitting },
+      };
+    }
+
+    case "toggle-settings-row": {
+      if (state.settingsRow.expanded) {
+        return { ...state, settingsRow: { expanded: false } };
+      }
+      // 同屏只显示一条展开条：入口行展开时折叠 L2 面板与 L3 条。
+      return {
+        ...state,
+        settingsRow: { expanded: true },
+        l2Panel: null,
+        l3Bar: { expanded: false },
+      };
+    }
+
+    case "collapse-settings-row": {
+      if (!state.settingsRow.expanded) return state;
+      return { ...state, settingsRow: { expanded: false } };
+    }
+
+    case "open-inbox": {
+      if (state.inbox.open) return state;
+      // 入口行只负责打开，列表数据由平台层取第一页（loading 先置位，避免空态闪烁）。
+      return {
+        ...state,
+        settingsRow: { expanded: false },
+        inbox: {
+          ...state.inbox,
+          open: true,
+          entries: [],
+          nextCursor: null,
+          loading: true,
+          revision: state.inbox.revision + 1,
+        },
+      };
+    }
+
+    case "close-inbox": {
+      if (!state.inbox.open) return state;
+      return {
+        ...state,
+        inbox: {
+          ...state.inbox,
+          open: false,
+          entries: [],
+          nextCursor: null,
+          loading: false,
+        },
+      };
+    }
+
+    case "set-inbox-loading": {
+      if (!state.inbox.open) return state;
+      if (state.inbox.loading === command.loading) return state;
+      return { ...state, inbox: { ...state.inbox, loading: command.loading } };
+    }
+
+    case "replace-inbox": {
+      if (!state.inbox.open) return state;
+      return {
+        ...state,
+        inbox: {
+          ...state.inbox,
+          entries: command.page.entries,
+          nextCursor: command.page.nextCursor,
+          loading: false,
+        },
+      };
+    }
+
+    case "append-inbox": {
+      if (!state.inbox.open) return state;
+      // 翻页期间可能有入库事件重载过第一页：按 id 去重，避免重复行。
+      const seen = new Set(state.inbox.entries.map((entry) => entry.id));
+      const appended = command.page.entries.filter((entry) => !seen.has(entry.id));
+      return {
+        ...state,
+        inbox: {
+          ...state.inbox,
+          entries: [...state.inbox.entries, ...appended],
+          nextCursor: command.page.nextCursor,
+          loading: false,
+        },
+      };
+    }
+
+    case "invalidate-inbox": {
+      // 已打开的列表由渲染层 effect 重载第一页；未打开时只记版本，下次打开必然重载。
+      return {
+        ...state,
+        inbox: { ...state.inbox, revision: state.inbox.revision + 1 },
+      };
     }
 
     case "show-notice":

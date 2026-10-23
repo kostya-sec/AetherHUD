@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { createDefaultHudState, createHudStore } from "./hud-model";
 import { connectHudBridge } from "./platform/hudBridge";
+import { connectInboxEvents } from "./platform/inbox";
 import { loadHudNavigation } from "./platform/navigation";
 import { revealWindowAfterFirstFrame } from "./platform/window";
 import "./index.css";
@@ -29,6 +30,8 @@ async function boot(): Promise<void> {
   );
 
   await connectHudBridge(store);
+  // 入库事件（hud://inbox-updated）在监听注册后才不会漏；打开收件箱时据此重载第一页。
+  await connectInboxEvents(store);
   // The Tauri window is created hidden to avoid a transparent-window white flash.
   revealWindowAfterFirstFrame();
 }

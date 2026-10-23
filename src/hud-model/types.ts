@@ -80,8 +80,81 @@ export interface L3BarState {
   readonly expanded: boolean;
 }
 
-/** 启动期提示（aether-core 产出 code + detail；5 秒自动关闭由渲染层计时）。 */
-export type HudNoticeCode = "taxonomy_overlay_corrupt" | "core_unavailable";
+/**
+ * 快速录入弹窗（#28）：seed = 打开时带入的搜索框内容（tauri#15436：先聚焦空
+ * textarea，下一帧再预填）；submitting 防止重复入库。
+ */
+export interface QuickInputState {
+  readonly seed: string;
+  readonly submitting: boolean;
+}
+
+/** 设置球展开入口行（#24 §9 / #28）：未实现项占位但不可触发。 */
+export type SettingsRowItemId =
+  | "inbox"
+  | "all"
+  | "tags"
+  | "taxonomy"
+  | "archive"
+  | "trash"
+  | "settings"
+  | "about";
+
+export interface SettingsRowItem {
+  readonly id: SettingsRowItemId;
+  readonly label: string;
+  readonly enabled: boolean;
+}
+
+export interface SettingsRowState {
+  readonly expanded: boolean;
+}
+
+/** 收件箱 keyset 游标（与 aether-core::inbox::InboxCursor 同形）。 */
+export interface InboxCursor {
+  readonly createdAt: number;
+  readonly id: number;
+}
+
+export type PipelineStatus = "pending" | "processing" | "classified" | "failed";
+
+/** 收件箱行（与 aether-core::inbox::InboxEntry 同形，camelCase）。 */
+export interface InboxEntry {
+  readonly id: number;
+  readonly uid: string;
+  readonly title: string;
+  readonly url: string | null;
+  readonly mediaType: string;
+  readonly pipelineStatus: PipelineStatus;
+  readonly failureReason: string | null;
+  readonly createdAt: number;
+  readonly lastSeenAt: number;
+  readonly l1Id: string;
+  readonly l2Id: string;
+}
+
+export interface InboxPage {
+  readonly entries: readonly InboxEntry[];
+  readonly nextCursor: InboxCursor | null;
+}
+
+/** 收件箱列表视图状态；revision 由 hud://inbox-updated 递增，驱动重载第一页。 */
+export interface InboxState {
+  readonly open: boolean;
+  readonly entries: readonly InboxEntry[];
+  readonly nextCursor: InboxCursor | null;
+  readonly loading: boolean;
+  readonly revision: number;
+}
+
+/** 启动期提示与入库反馈（aether-core 产出 code + detail；5 秒自动关闭由渲染层计时）。 */
+export type HudNoticeCode =
+  | "taxonomy_overlay_corrupt"
+  | "core_unavailable"
+  | "entry_ingested"
+  | "entry_duplicate"
+  | "ingest_failed"
+  | "inbox_unavailable";
 
 export interface HudNotice {
   readonly code: HudNoticeCode;
@@ -100,6 +173,12 @@ export interface HudState {
   readonly navigation: HudNavigation | null;
   readonly l2Panel: L2PanelState | null;
   readonly l3Bar: L3BarState;
+  /** 快速录入弹窗；null = 未打开。 */
+  readonly quickInput: QuickInputState | null;
+  /** 设置球展开的入口行（收件箱/全部/…/关于）。 */
+  readonly settingsRow: SettingsRowState;
+  /** 收件箱列表视图。 */
+  readonly inbox: InboxState;
   readonly notice: HudNotice | null;
   readonly phase: HudPhase;
 }
@@ -115,6 +194,17 @@ export type HudCommand =
   | { readonly type: "activate-l2"; readonly l2Id: string | null }
   | { readonly type: "toggle-l3-bar" }
   | { readonly type: "collapse-l3-bar" }
+  | { readonly type: "open-quick-input"; readonly seed: string }
+  | { readonly type: "close-quick-input" }
+  | { readonly type: "set-quick-input-submitting"; readonly submitting: boolean }
+  | { readonly type: "toggle-settings-row" }
+  | { readonly type: "collapse-settings-row" }
+  | { readonly type: "open-inbox" }
+  | { readonly type: "close-inbox" }
+  | { readonly type: "set-inbox-loading"; readonly loading: boolean }
+  | { readonly type: "replace-inbox"; readonly page: InboxPage }
+  | { readonly type: "append-inbox"; readonly page: InboxPage }
+  | { readonly type: "invalidate-inbox" }
   | { readonly type: "show-notice"; readonly notice: HudNotice }
   | { readonly type: "dismiss-notice" };
 

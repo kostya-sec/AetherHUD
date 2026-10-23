@@ -31,9 +31,13 @@ interface HudBallColumnProps {
   activeL1Id: string | null;
   /** L3 标签条展开时高亮 L3 筛选球。 */
   l3Expanded: boolean;
+  /** 设置球入口行展开时高亮设置球。 */
+  settingsExpanded: boolean;
   onActivateSearch: () => void;
   onActivateL1: (l1Id: string) => void;
   onActivateL3: () => void;
+  onActivateQuickAdd: () => void;
+  onActivateSettings: () => void;
 }
 
 const KIND_ICONS: Record<BallKind, LucideIcon> = {
@@ -77,9 +81,12 @@ export function HudBallColumn({
   hudOpacity,
   activeL1Id,
   l3Expanded,
+  settingsExpanded,
   onActivateSearch,
   onActivateL1,
   onActivateL3,
+  onActivateQuickAdd,
+  onActivateSettings,
 }: HudBallColumnProps) {
   const suppressClickRef = useRef(false);
   const endPressRef = useRef<(() => void) | null>(null);
@@ -162,12 +169,12 @@ export function HudBallColumn({
     >
       {slots.map((slot) => {
         const Icon = iconFor(slot);
-        const interactive =
-          !slot.placeholder &&
-          (slot.kind === "search" || slot.kind === "l1" || slot.kind === "l3-filter");
+        // 所有非占位球都可交互：搜索 / L3 / L1 / 快速录入 / 设置（#28）。
+        const interactive = !slot.placeholder;
         const selected =
           (slot.kind === "l1" && slot.l1Id !== undefined && slot.l1Id === activeL1Id) ||
-          (slot.kind === "l3-filter" && l3Expanded);
+          (slot.kind === "l3-filter" && l3Expanded) ||
+          (slot.kind === "settings" && settingsExpanded);
         const title = slot.placeholder ? `${slot.label}（后续接入）` : slot.label;
 
         const handleClick = () => {
@@ -175,6 +182,8 @@ export function HudBallColumn({
           if (slot.kind === "search") onActivateSearch();
           else if (slot.kind === "l3-filter") onActivateL3();
           else if (slot.kind === "l1" && slot.l1Id) onActivateL1(slot.l1Id);
+          else if (slot.kind === "quick-add") onActivateQuickAdd();
+          else if (slot.kind === "settings") onActivateSettings();
         };
 
         return (

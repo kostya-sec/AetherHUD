@@ -4,16 +4,23 @@
 //! 不依赖 Tauri、不直接摸系统 API：壳把 app_data_dir、底表路径与适配器注入进来。
 
 pub mod adapters;
+pub mod ids;
+pub mod inbox;
+pub mod ingest;
 pub mod navigation;
 pub mod notice;
 pub mod paths;
+pub mod search;
 pub mod storage;
 pub mod taxonomy;
+pub mod url;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::adapters::{Clock, FileSystem};
+use crate::inbox::{InboxCursor, InboxPage};
+use crate::ingest::{IngestError, IngestOutcome};
 use crate::navigation::HudNavigation;
 use crate::notice::HudNotice;
 use crate::storage::Database;
@@ -55,6 +62,8 @@ pub enum CoreError {
     Taxonomy(#[from] taxonomy::TaxonomyStartupError),
     #[error(transparent)]
     Storage(#[from] storage::StorageError),
+    #[error(transparent)]
+    Ingest(#[from] IngestError),
 }
 
 pub struct Core {
@@ -96,6 +105,20 @@ impl Core {
 
     pub fn database(&self) -> &Database {
         &self.database
+    }
+
+    /// 本地录入（#28）：URL 进 fetch stage、纯文本直入 classify stage；
+    /// 去重双轨命中时只更新最近出现时间（不新建条目、不入队新 job）。
+    ///
+    /// 时间由调用方传入（时钟适配器在壳侧），领域层不读系统时钟。
+    pub fn ingest_text(&self, text: &str, now_ms: i64) -> Result<IngestOutcome, CoreError> {
+        let plan = ingest::plan_manual(text, now_ms)?;
+        Ok(self.database.ingest(&plan, now_ms)?)
+    }
+
+    /// 收件箱一页（50 条/页，created_at 倒序 keyset 分页）。
+    pub fn inbox_page(&self, cursor: Option<InboxCursor>) -> Result<InboxPage, CoreError> {
+        Ok(self.database.inbox_page(cursor, inbox::INBOX_PAGE_SIZE)?)
     }
 
     /// 取走启动期提示（覆盖层损坏等）；同一事件只提示一次。
@@ -184,6 +207,77 @@ mod tests {
         let notices = core.take_notices();
         assert_eq!(notices.len(), 1);
         assert!(core.take_notices().is_empty());
+        let _ = std::fs::remove_dir_all(db_path.parent().unwrap());
+    }
+
+    fn bootstrap_core() -> (Core, PathBuf) {
+        let fs = MemoryFileSystem::new().with_file("/install/taxonomy.json", BASE);
+        let clock = FakeClock::new(1_761_000_000_000);
+        let deps = CoreDeps {
+            fs: &fs,
+            clock: &clock,
+        };
+        let db_path = temp_db_path();
+        let core = Core::bootstrap(config(db_path.clone()), deps).unwrap();
+        (core, db_path)
+    }
+
+    #[test]
+    fn ingest_url_stages_fetch_and_dedupes_by_canonical_url() {
+        let (core, db_path) = bootstrap_core();
+
+        let first = core
+            .ingest_text("https://Example.com/a?utm_source=x&b=2&a=1", 1_000)
+            .unwrap();
+        assert!(!first.duplicate);
+        assert_eq!(first.stage, Some(crate::ingest::PipelineStage::Fetch));
+        assert_eq!(first.pipeline_status, "pending");
+        assert_eq!(first.last_seen_at, 1_000);
+
+        let duplicate = core
+            .ingest_text("HTTPS://example.com/a/?b=2&a=1#frag", 2_000)
+            .unwrap();
+        assert!(duplicate.duplicate);
+        assert_eq!(duplicate.entry_id, first.entry_id);
+        assert_eq!(duplicate.stage, None);
+        assert_eq!(duplicate.last_seen_at, 2_000);
+
+        let page = core.inbox_page(None).unwrap();
+        assert_eq!(page.entries.len(), 1, "重复投递不应产生第二个条目");
+        assert_eq!(page.entries[0].pipeline_status, "pending");
+        assert_eq!(
+            page.entries[0].title,
+            "https://Example.com/a?utm_source=x&b=2&a=1"
+        );
+        assert!(page.entries[0].url.is_some());
+        assert_eq!(page.next_cursor, None);
+
+        let _ = std::fs::remove_dir_all(db_path.parent().unwrap());
+    }
+
+    #[test]
+    fn ingest_plain_text_stages_classify_and_shows_up_in_the_inbox() {
+        let (core, db_path) = bootstrap_core();
+        let outcome = core.ingest_text("第一行标题\n第二行正文", 1_500).unwrap();
+        assert!(!outcome.duplicate);
+        assert_eq!(outcome.stage, Some(crate::ingest::PipelineStage::Classify));
+
+        let page = core.inbox_page(None).unwrap();
+        assert_eq!(page.entries.len(), 1);
+        assert_eq!(page.entries[0].title, "第一行标题");
+        assert_eq!(page.entries[0].pipeline_status, "pending");
+        assert_eq!(page.entries[0].url, None);
+        assert_eq!(page.entries[0].media_type, "article");
+        assert_eq!(page.entries[0].l1_id, crate::ingest::FAIL_SAFE_L1_ID);
+
+        let _ = std::fs::remove_dir_all(db_path.parent().unwrap());
+    }
+
+    #[test]
+    fn empty_ingest_input_is_a_domain_error() {
+        let (core, db_path) = bootstrap_core();
+        assert!(core.ingest_text("   ", 1_000).is_err());
+        assert!(core.inbox_page(None).unwrap().entries.is_empty());
         let _ = std::fs::remove_dir_all(db_path.parent().unwrap());
     }
 

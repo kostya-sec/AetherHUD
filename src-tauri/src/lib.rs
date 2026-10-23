@@ -47,6 +47,8 @@ pub fn run() {
             commands::hud_status,
             commands::hud_navigation,
             commands::hud_take_notices,
+            commands::ingest_text,
+            commands::hud_inbox,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AetherHUD");

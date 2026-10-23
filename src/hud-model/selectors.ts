@@ -9,6 +9,8 @@ import {
   SEARCH_BALL,
   SEARCH_KEY_HINTS,
   SETTINGS_BALL,
+  SETTINGS_ROW_ITEMS,
+  SETTINGS_ROW_KEY_HINTS,
   taxonomyBall,
 } from "./constants";
 import type {
@@ -17,8 +19,12 @@ import type {
   HudNotice,
   HudPhase,
   HudState,
+  InboxEntry,
+  InboxState,
   KeyHint,
   L2PanelState,
+  QuickInputState,
+  SettingsRowItem,
   TaxonomyL1,
 } from "./types";
 
@@ -109,8 +115,73 @@ export const selectL3Bar = (state: HudState): L3BarView => ({
 
 export const selectNotice = (state: HudState): HudNotice | null => state.notice;
 
-/** 底部提示条随焦点区变化；本票的区 = 搜索框 / L2 面板 / L3 条 / 球列（#38 扩展五区）。 */
+export const selectQuickInput = (state: HudState): QuickInputState | null =>
+  state.quickInput;
+
+export interface SettingsRowView {
+  readonly expanded: boolean;
+  readonly items: readonly SettingsRowItem[];
+}
+
+export const selectSettingsRow = (state: HudState): SettingsRowView => ({
+  expanded: state.settingsRow.expanded,
+  items: SETTINGS_ROW_ITEMS,
+});
+
+export const selectInbox = (state: HudState): InboxState => state.inbox;
+
+export interface InboxStatusBadge {
+  readonly label: string;
+  readonly tone: "pending" | "failed";
+}
+
+/**
+ * 收件箱行徽标：pending/processing 显示「分类中」，failed 显示「失败」；
+ * classified 不属于收件箱管线视图，返回 null。
+ */
+export const inboxStatusBadge = (
+  status: InboxEntry["pipelineStatus"],
+): InboxStatusBadge | null => {
+  switch (status) {
+    case "pending":
+    case "processing":
+      return { label: "分类中", tone: "pending" };
+    case "failed":
+      return { label: "失败", tone: "failed" };
+    case "classified":
+      return null;
+  }
+};
+
+/** 条目媒体类型的中文展示（收件箱行；L3 筛选 chip 有自己的筛选标签）。 */
+export const mediaTypeLabel = (mediaType: string): string => {
+  switch (mediaType) {
+    case "video":
+      return "视频";
+    case "article":
+      return "文章 / 纯文本";
+    case "link":
+      return "网页";
+    default:
+      return mediaType;
+  }
+};
+
+/** 管线失败原因的中文展示（收件箱行徽标区）。 */
+export const failureReasonLabel = (reason: string): string => {
+  switch (reason) {
+    case "fetch_failed":
+      return "失败：抓取失败";
+    case "classify_failed":
+      return "失败：分类失败";
+    default:
+      return `失败：${reason}`;
+  }
+};
+
+/** 底部提示条随焦点区变化：搜索框 / L2 / L3 / 入口行 / 球列。弹窗/收件箱打开时隐藏。 */
 export const selectKeyHints = (state: HudState): readonly KeyHint[] => {
+  if (state.settingsRow.expanded) return SETTINGS_ROW_KEY_HINTS;
   if (state.search.expanded) return SEARCH_KEY_HINTS;
   if (state.l2Panel) return L2_KEY_HINTS;
   if (state.l3Bar.expanded) return L3_KEY_HINTS;

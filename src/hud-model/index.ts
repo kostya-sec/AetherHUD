@@ -1,20 +1,33 @@
 export {
   ALL_CHILDREN_ID,
+  failureReasonLabel,
+  inboxStatusBadge,
+  mediaTypeLabel,
   selectActiveL1Id,
   selectActiveL2Id,
   selectHudPhase,
+  selectInbox,
   selectKeyHints,
   selectL2Panel,
   selectL3Bar,
   selectNavigation,
   selectNotice,
+  selectQuickInput,
   selectSearchExpanded,
   selectSearchFocusRequest,
   selectSearchOrbVisible,
   selectSearchQuery,
+  selectSettingsRow,
   selectVisibleBallSlots,
 } from "./selectors";
-export type { L2PanelItem, L2PanelView, L3BarView, L3MediaChip } from "./selectors";
+export type {
+  InboxStatusBadge,
+  L2PanelItem,
+  L2PanelView,
+  L3BarView,
+  L3MediaChip,
+  SettingsRowView,
+} from "./selectors";
 export {
   BALL_KEY_HINTS,
   L2_KEY_HINTS,
@@ -27,6 +40,8 @@ export {
   SEARCH_BALL,
   SEARCH_KEY_HINTS,
   SETTINGS_BALL,
+  SETTINGS_ROW_ITEMS,
+  SETTINGS_ROW_KEY_HINTS,
   taxonomyBall,
 } from "./constants";
 export {
@@ -34,7 +49,12 @@ export {
   createHudStore,
   hudReducer,
 } from "./state";
-export { COMPOSITION_GRACE_MS, resolveGlobalKeyDown } from "./keyboard";
+export {
+  COMPOSITION_GRACE_MS,
+  isIngestShortcut,
+  resolveEscapeCommand,
+  resolveGlobalKeyDown,
+} from "./keyboard";
 export type { HudKeyAction, KeyDownLike, KeyGuardContext } from "./keyboard";
 export type {
   BallKind,
@@ -47,10 +67,19 @@ export type {
   HudState,
   HudStore,
   HudView,
+  InboxCursor,
+  InboxEntry,
+  InboxPage,
+  InboxState,
   KeyHint,
   L2PanelState,
   L3BarState,
+  PipelineStatus,
+  QuickInputState,
   SearchState,
+  SettingsRowItem,
+  SettingsRowItemId,
+  SettingsRowState,
   TaxonomyFormatTag,
   TaxonomyL1,
   TaxonomyL2,

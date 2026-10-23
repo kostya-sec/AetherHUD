@@ -1,6 +1,6 @@
 [package]
 name = "aether-core"
-description = "AetherHUD 应用核心库：存储、分类树合并、生效树导出、HUD 导航与可注入适配器（#27）"
+description = "AetherHUD 应用核心库：存储、本地录入与收件箱、分类树合并、生效树导出、HUD 导航与可注入适配器（#28）"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,12 +14,12 @@ thiserror = { workspace = true }
 rusqlite = { workspace = true }
 rusqlite_migration = "2.6"
 reqwest = { workspace = true }
+url = { workspace = true }
+blake3 = { workspace = true }
+fastrand = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
-
-[dev-dependencies]
-fastrand = { workspace = true }

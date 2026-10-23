@@ -1,25 +1,33 @@
 import { useEffect, useRef } from "react";
 import {
   selectActiveL1Id,
+  selectInbox,
   selectKeyHints,
   selectL2Panel,
   selectL3Bar,
   selectNotice,
+  selectQuickInput,
   selectSearchExpanded,
   selectSearchFocusRequest,
   selectSearchQuery,
+  selectSettingsRow,
   selectVisibleBallSlots,
   type HudCommand,
   type HudState,
 } from "../hud-model";
 import { publishHitBoxes } from "../platform/hitboxes";
+import { loadInboxFirstPage, loadInboxNextPage } from "../platform/inbox";
+import { submitQuickInput } from "../platform/ingest";
 import { ballTopOffset, ballTopOffsetFor } from "./ballLayout";
 import { HudBallColumn } from "./HudBallColumn";
+import { HudInboxView } from "./HudInboxView";
 import { HudKeyHintBar } from "./HudKeyHintBar";
 import { HudL2Panel } from "./HudL2Panel";
 import { HudL3Bar } from "./HudL3Bar";
 import { HudNoticeBar } from "./HudNoticeBar";
+import { HudQuickInputModal } from "./HudQuickInputModal";
 import { HudSearchBar } from "./HudSearchBar";
+import { HudSettingsRow } from "./HudSettingsRow";
 import { RainBackground } from "./RainBackground";
 
 /** Prototype defaults from #7; the settings layer owns these later (T22). */
@@ -44,6 +52,11 @@ export function HudShell({ state, dispatch }: HudShellProps) {
   const panel = selectL2Panel(state);
   const l3Bar = selectL3Bar(state);
   const notice = selectNotice(state);
+  const quickInput = selectQuickInput(state);
+  const settingsRow = selectSettingsRow(state);
+  const inbox = selectInbox(state);
+  // 弹窗/列表视图打开时，底层内容 inert：Tab 不逃出弹窗、点击不误触球列。
+  const overlayOpen = quickInput !== null || inbox.open;
 
   // L2 面板与被点 L1 球顶部平行对齐：同一套几何常数计算球顶偏移（#27 验收）。
   const activeBallIndex = activeL1Id
@@ -73,7 +86,24 @@ export function HudShell({ state, dispatch }: HudShellProps) {
   const l3BarKey = l3Bar.expanded ? `open:${l3FilterTop ?? "none"}` : "closed";
   useEffect(() => {
     publishHitBoxes();
-  }, [searchExpanded, l3BarKey, notice !== null, panelKey, navigationKey]);
+  }, [
+    searchExpanded,
+    l3BarKey,
+    notice !== null,
+    panelKey,
+    navigationKey,
+    quickInput !== null,
+    settingsRow.expanded,
+    inbox.open,
+  ]);
+
+  // 收件箱打开/收到 inbox-updated 时重载第一页；翻页由「加载更多」显式触发。
+  const inboxOpen = inbox.open;
+  const inboxRevision = inbox.revision;
+  useEffect(() => {
+    if (!inboxOpen) return;
+    void loadInboxFirstPage(dispatch);
+  }, [inboxOpen, inboxRevision, dispatch]);
 
   useEffect(() => {
     const republish = () => publishHitBoxes();
@@ -94,6 +124,7 @@ export function HudShell({ state, dispatch }: HudShellProps) {
 
         <div
           data-hud-module
+          inert={overlayOpen}
           className="hud-rise relative z-10 flex flex-col items-start gap-3"
         >
           {notice && (
@@ -110,6 +141,9 @@ export function HudShell({ state, dispatch }: HudShellProps) {
               hudOpacity={HUD_OPACITY}
               onQueryChange={(query) => dispatch({ type: "set-query", query })}
               onCollapse={() => dispatch({ type: "collapse-search" })}
+              onIngestShortcut={(seed) =>
+                dispatch({ type: "open-quick-input", seed })
+              }
             />
           )}
 
@@ -120,9 +154,14 @@ export function HudShell({ state, dispatch }: HudShellProps) {
               hudOpacity={HUD_OPACITY}
               activeL1Id={activeL1Id}
               l3Expanded={l3Bar.expanded}
+              settingsExpanded={settingsRow.expanded}
               onActivateSearch={() => dispatch({ type: "expand-search" })}
               onActivateL1={(l1Id) => dispatch({ type: "activate-l1", l1Id })}
               onActivateL3={() => dispatch({ type: "toggle-l3-bar" })}
+              onActivateQuickAdd={() =>
+                dispatch({ type: "open-quick-input", seed: "" })
+              }
+              onActivateSettings={() => dispatch({ type: "toggle-settings-row" })}
             />
 
             {panel && (
@@ -143,11 +182,40 @@ export function HudShell({ state, dispatch }: HudShellProps) {
                 onCollapse={() => dispatch({ type: "collapse-l3-bar" })}
               />
             )}
+
+            {settingsRow.expanded && (
+              <HudSettingsRow
+                view={settingsRow}
+                hudOpacity={HUD_OPACITY}
+                onSelect={(itemId) => {
+                  // 本票只实现收件箱；其余入口 enabled=false，不会到这里。
+                  if (itemId === "inbox") dispatch({ type: "open-inbox" });
+                }}
+              />
+            )}
           </div>
         </div>
       </div>
 
-      <HudKeyHintBar hints={selectKeyHints(state)} />
+      {!overlayOpen && <HudKeyHintBar hints={selectKeyHints(state)} />}
+
+      {quickInput && (
+        <HudQuickInputModal
+          quickInput={quickInput}
+          hudOpacity={HUD_OPACITY}
+          onSubmit={(text) => void submitQuickInput(dispatch, text)}
+          onClose={() => dispatch({ type: "close-quick-input" })}
+        />
+      )}
+
+      {inbox.open && (
+        <HudInboxView
+          inbox={inbox}
+          hudOpacity={HUD_OPACITY}
+          onClose={() => dispatch({ type: "close-inbox" })}
+          onLoadMore={() => void loadInboxNextPage(dispatch, inbox.nextCursor)}
+        />
+      )}
     </div>
   );
 }

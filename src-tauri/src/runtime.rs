@@ -8,6 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager};
 
 use aether_core::adapters::{StdFileSystem, SystemClock};
+use aether_core::inbox::{InboxCursor, InboxPage};
+use aether_core::ingest::IngestOutcome;
 use aether_core::navigation::HudNavigation;
 use aether_core::notice::HudNotice;
 use aether_core::{Core, CoreConfig, CoreDeps};
@@ -86,13 +88,29 @@ impl CoreState {
     }
 
     pub fn navigation(&self) -> Result<HudNavigation, String> {
-        match &self.core {
-            Some(core) => Ok(core.navigation().clone()),
-            None => Err(self
-                .error
+        Ok(self.core()?.navigation().clone())
+    }
+
+    /// 本地录入（#28）：入库成功即代表 entries + entry_sources + pipeline_jobs 已同事务写入。
+    pub fn ingest_text(&self, text: &str, now_ms: i64) -> Result<IngestOutcome, String> {
+        self.core()?
+            .ingest_text(text, now_ms)
+            .map_err(|error| error.to_string())
+    }
+
+    /// 收件箱一页（50 条/页 keyset 分页）。
+    pub fn inbox_page(&self, cursor: Option<InboxCursor>) -> Result<InboxPage, String> {
+        self.core()?
+            .inbox_page(cursor)
+            .map_err(|error| error.to_string())
+    }
+
+    fn core(&self) -> Result<&Core, String> {
+        self.core.as_ref().ok_or_else(|| {
+            self.error
                 .clone()
-                .unwrap_or_else(|| "核心库尚未初始化".to_string())),
-        }
+                .unwrap_or_else(|| "核心库尚未初始化".to_string())
+        })
     }
 
     /// 启动期提示（覆盖层损坏等）；前端在每次唤出后取走并显示 5 秒提示条。

@@ -1,4 +1,4 @@
-import type { BallSlot, KeyHint, TaxonomyL1 } from "./types";
+import type { BallSlot, KeyHint, SettingsRowItem, TaxonomyL1 } from "./types";
 
 /**
  * Ball column order (#17 §5.4 / PRD v2 §8):
@@ -23,14 +23,14 @@ export const QUICK_ADD_BALL: BallSlot = {
   id: "quick-add",
   kind: "quick-add",
   label: "快速录入",
-  placeholder: true,
+  placeholder: false,
 };
 
 export const SETTINGS_BALL: BallSlot = {
   id: "settings",
   kind: "settings",
-  label: "全局设置",
-  placeholder: true,
+  label: "全局设置入口",
+  placeholder: false,
 };
 
 /**
@@ -83,6 +83,26 @@ export const BALL_KEY_HINTS: readonly KeyHint[] = [
 export const L2_KEY_HINTS: readonly KeyHint[] = [{ keys: ["Esc"], label: "收起" }];
 
 export const L3_KEY_HINTS: readonly KeyHint[] = [{ keys: ["Esc"], label: "收起" }];
+
+/**
+ * 设置球入口行（#28）：本票只有收件箱可进入，键盘导航在 #38 接线，
+ * 所以提示条只声明真正可用的 Esc。
+ */
+export const SETTINGS_ROW_KEY_HINTS: readonly KeyHint[] = [
+  { keys: ["Esc"], label: "收起入口行" },
+];
+
+/** 设置球展开入口行（#24 §9 / #28）；未实现项 enabled=false，不可误触发。 */
+export const SETTINGS_ROW_ITEMS: readonly SettingsRowItem[] = [
+  { id: "inbox", label: "收件箱", enabled: true },
+  { id: "all", label: "全部", enabled: false },
+  { id: "tags", label: "标签管理", enabled: false },
+  { id: "taxonomy", label: "分类管理", enabled: false },
+  { id: "archive", label: "封存箱", enabled: false },
+  { id: "trash", label: "回收站", enabled: false },
+  { id: "settings", label: "设置", enabled: false },
+  { id: "about", label: "关于", enabled: false },
+];
 
 /** L3 标签条的**结构顺序**（#17 §5.6）：媒体 chip → 形态标签 → 特征标签。 */
 export const L3_MEDIA_CHIPS: readonly { readonly id: string; readonly name: string }[] = [

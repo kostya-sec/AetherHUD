@@ -40,6 +40,7 @@
 - 前端把带 `data-hud-hitbox` 的元素矩形（CSS px，相对窗口）通过 `set_hit_boxes` 上报；布局变化（搜索框展开/折叠、resize）时整体替换。
 - Rust supervisor 约 50ms 轮询物理光标位置，用**当前**窗口原点与 scaleFactor 换算 hitbox 后做命中测试，仅在结论变化时切换 ignore 标志（负坐标/多屏安全）。
 - HUD 收起 / 滑出期间强制穿透。实测：空白区域 `WS_EX_TRANSPARENT` 置位、搜索框区域清除并由 HUD 接收点击。
+- 弹窗（快速录入）与列表视图（收件箱）打开时铺满整窗的 backdrop 并标 `data-hud-hitbox`：弹窗内的点击始终落在 webview 里，不会穿透到桌面触发失焦收起，录入过程不被打断（#28）。
 
 ## 6. 热键
 
@@ -79,6 +80,9 @@
 | 前端 → Rust | `hud_status` | 阶段、启动形态、热键注册状态 |
 | 前端 → Rust | `hud_navigation` | 生效分类树投影：5 个 L1 + L2 + 形态标签（#27） |
 | 前端 → Rust | `hud_take_notices` | 取启动期提示（覆盖层损坏 / 核心库未启动），每次取走即清空（#27） |
+| 前端 → Rust | `ingest_text` | 本地录入：URL 进 fetch stage、纯文本直入 classify stage；双轨去重 + entries/entry_sources/pipeline_jobs 同事务（#28） |
+| 前端 → Rust | `hud_inbox` | 收件箱一页（管线视图 = pending/processing/failed；50 条/页 keyset 分页，created_at 倒序）（#28） |
+| Rust → 前端 | `hud://inbox-updated` | 入库成功（含重复投递刷新）：收件箱打开时重载第一页（#28） |
 | Rust → 前端（事件顺序） | 唤出：focus 先于 `hud://summon` | 窗口先拿到系统焦点，键盘立即可用（2026-10-23 起不再自动聚焦搜索框） |
 
 ## 11. 验证
