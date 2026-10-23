@@ -1,4 +1,5 @@
 import { CREDENTIAL_KINDS, DEFAULT_SETTINGS_SECTION } from "./constants";
+import { providerProfilesEqual } from "./provider";
 import type { HudCommand, HudNavigation, HudState, HudStore } from "./types";
 
 /**
@@ -271,7 +272,15 @@ export function hudReducer(state: HudState, command: HudCommand): HudState {
     case "set-provider-profile": {
       // 关闭弹层后迟到的响应被忽略（与凭证状态同一约定）。
       if (!state.settings.open) return state;
-      if (state.settings.credentials.profile === command.profile) return state;
+      const previous = state.settings.credentials.profile;
+      if (previous !== null && providerProfilesEqual(previous, command.profile)) {
+        // 读取回读/重复保存同一配置：不改状态，也不作废既有验证结论。
+        return state;
+      }
+      // 供应商配置真正变化后，旧的分类器验证结论不再可信（其余外部服务保留）。
+      const validations = state.settings.credentials.validations.filter(
+        (validation) => validation.target !== "classifier",
+      );
       return {
         ...state,
         settings: {
@@ -279,6 +288,7 @@ export function hudReducer(state: HudState, command: HudCommand): HudState {
           credentials: {
             ...state.settings.credentials,
             profile: command.profile,
+            validations,
           },
         },
       };

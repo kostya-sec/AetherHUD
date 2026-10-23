@@ -259,7 +259,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
     label: "凭证",
     implemented: true,
     summary:
-      "分类器供应商（预设 / Base URL / 模型 / 消息格式）、分类 Key、Jina Key、飞书 App ID / App Secret（#29 / #45 前置）",
+      "分类器供应商（预设 / 消息格式 / Base URL / 模型 / API Key 同一卡片）、Jina Key、飞书 App ID / App Secret（#29 / #45）",
   },
   {
     id: "ingestion",

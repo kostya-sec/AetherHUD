@@ -289,6 +289,68 @@ describe("设置弹层（#29）", () => {
     expect(selectSettings(state).credentials.profile).toBeNull();
   });
 
+  it("供应商配置变化会作废旧的分类器验证结论，保留其他服务", () => {
+    let state = hudReducer(openedSettings(), {
+      type: "set-provider-profile",
+      profile: {
+        preset: "bailian",
+        baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        model: "qwen-flash",
+        messageType: "chat_completions",
+      },
+    });
+    state = hudReducer(state, {
+      type: "set-credential-validation",
+      validation: validation(),
+    });
+    state = hudReducer(state, {
+      type: "set-credential-validation",
+      validation: validation({
+        target: "jina",
+        detail: "Jina Reader 可用（一次读取成功）",
+      }),
+    });
+
+    // 真正切换供应商（规范化后的等价配置不应触发作废）。
+    state = hudReducer(state, {
+      type: "set-provider-profile",
+      profile: {
+        preset: "deepseek",
+        baseUrl: "https://api.deepseek.com/v1",
+        model: "deepseek-chat",
+        messageType: "chat_completions",
+      },
+    });
+
+    expect(selectCredentialValidation(selectSettings(state).credentials, "classifier")).toBeNull();
+    expect(
+      selectCredentialValidation(selectSettings(state).credentials, "jina")?.ok,
+    ).toBe(true);
+  });
+
+  it("回读等价供应商配置不改变状态（避免无谓作废验证）", () => {
+    const profile = {
+      preset: "bailian" as const,
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      model: "qwen-flash",
+      messageType: "chat_completions" as const,
+    };
+    const state = hudReducer(openedSettings(), {
+      type: "set-provider-profile",
+      profile,
+    });
+
+    expect(
+      hudReducer(state, {
+        type: "set-provider-profile",
+        profile: {
+          ...profile,
+          baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1/",
+        },
+      }),
+    ).toBe(state);
+  });
+
   it("从托盘事件打开时先唤出重置、再打开指定分区（事件顺序）", () => {
     const store = createHudStore();
     store.dispatch({ type: "open-inbox" });

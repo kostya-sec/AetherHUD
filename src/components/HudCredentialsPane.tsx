@@ -5,6 +5,7 @@ import {
   PROVIDER_PRESETS,
   providerPreset,
   providerProfileDraft,
+  providerProfilesEqual,
   selectCredentialValidation,
   type CredentialKind,
   type CredentialMessage,
@@ -28,8 +29,9 @@ interface HudCredentialsPaneProps {
 }
 
 /**
- * 设置弹层的「凭证」分区（#29）：逐项保存 / 清除 / 显示已配置状态，并验证
- * 百炼、Jina、飞书的连通性。Keychain 写入与验证都在 core 层，组件只负责呈现。
+ * 设置弹层的「凭证」分区（#29 / #45 修复）：分类器供应商卡片内含 API Key 行，
+ * Jina Reader 与飞书各自一组，逐项保存 / 清除 / 显示已配置状态，并验证连通性。
+ * Keychain 写入与验证都在 core 层，组件只负责呈现。
  *
  * 每组末尾显示一次验证结论；保存/清除后同一外部服务的旧结论由 reducer 作废。
  */
@@ -54,6 +56,9 @@ export function HudCredentialsPane({
   const rows = CREDENTIAL_KINDS.map((kind) => statusByKind.get(kind)).filter(
     (status): status is CredentialStatus => status !== undefined,
   );
+  const savedProfile = credentials.profile;
+  // Key 行的展示名随**已保存**的供应商变化（account 与引用固定）。
+  const savedPreset = providerPreset(savedProfile?.preset ?? "bailian");
 
   const setDraft = (kind: CredentialKind, value: string) => {
     setDrafts((current) => ({ ...current, [kind]: value }));
@@ -87,12 +92,6 @@ export function HudCredentialsPane({
   const validationFor = (target: ValidationTarget): CredentialValidationView | null =>
     selectCredentialValidation(credentials, target);
 
-  const savedProfile = credentials.profile;
-  const savedPreset = providerPreset(savedProfile?.preset ?? "bailian");
-  const classifierHint = savedProfile?.baseUrl
-    ? `GET ${savedProfile.baseUrl}/models`
-    : "保存供应商配置后按活动 Base URL 验证";
-
   return (
     <div data-settings-credentials className="flex flex-col gap-3">
       {credentials.message && (
@@ -110,10 +109,22 @@ export function HudCredentialsPane({
 
       <ProviderCard
         draft={providerDraft}
+        savedProfile={savedProfile}
         busy={credentials.profileBusy}
         message={credentials.profileMessage}
         onChange={setProviderDraft}
         onSave={() => void onSaveProviderProfile(providerDraft)}
+        keyStatus={statusByKind.get("classifierApiKey") ?? null}
+        keyLoading={credentials.loading}
+        keyLabel={`${savedPreset.label} API Key`}
+        keyDraft={drafts.classifierApiKey ?? ""}
+        keyBusy={credentials.busy === "classifierApiKey"}
+        onKeyDraftChange={(value) => setDraft("classifierApiKey", value)}
+        onSaveKey={() => void save("classifierApiKey")}
+        onClearKey={() => void onClearCredential("classifierApiKey")}
+        validation={validationFor("classifier")}
+        validating={credentials.busy === "classifier"}
+        onValidate={() => void onValidate("classifier")}
       />
 
       {rows.length === 0 ? (
@@ -124,20 +135,6 @@ export function HudCredentialsPane({
         </div>
       ) : (
         <>
-          <CredentialGroup
-            title={`分类器密钥 · ${savedPreset.label}`}
-            hint={classifierHint}
-            rows={row("classifierApiKey", `${savedPreset.label} API Key`)}
-            validation={validationFor("classifier")}
-            validating={credentials.busy === "classifier"}
-            canValidate={statusByKind.get("classifierApiKey")?.state === "configured"}
-            idleHint={
-              savedProfile
-                ? "验证会使用活动供应商的 Base URL 与模型。"
-                : "先保存供应商配置，再点「验证连接」检查 Key、权限或代理。"
-            }
-            onValidate={() => void onValidate("classifier")}
-          />
           <CredentialGroup
             title="Jina Reader"
             hint="GET r.jina.ai 一次读（本机通常需要代理）"
@@ -176,26 +173,81 @@ export function HudCredentialsPane({
 
 interface ProviderCardProps {
   draft: ProviderProfile;
+  /** 已保存的活动供应商配置；null = 还没从壳读到或读取失败。 */
+  savedProfile: ProviderProfile | null;
   busy: boolean;
   message: CredentialMessage | null;
+  keyStatus: CredentialStatus | null;
+  keyLoading: boolean;
+  /** Key 行的展示名（随已保存供应商变化；account 固定 classifier.api_key）。 */
+  keyLabel: string;
+  keyDraft: string;
+  keyBusy: boolean;
+  validation: CredentialValidationView | null;
+  validating: boolean;
   onChange: (profile: ProviderProfile) => void;
   onSave: () => void;
+  onKeyDraftChange: (value: string) => void;
+  onSaveKey: () => void;
+  onClearKey: () => void;
+  onValidate: () => void;
 }
 
 const PROVIDER_FIELD_CLASS =
   "rounded border border-stone-700/80 bg-stone-950/60 px-2 py-1 font-mono text-[11px] text-stone-100 outline-none placeholder:text-stone-600 focus:border-amber-500/80";
 
 /**
- * 「分类器供应商」卡片（#45 前置）：预设 + Base URL + 模型 + 消息格式。
+ * 「分类器供应商」卡片（#45 前置 / #45 修复）：预设 + 消息格式 + Base URL + 模型，
+ * 以及同一区块里的 API Key 行（保存到钥匙串 / 清除）与「验证连接」。
  *
  * 单一活动供应商：切换预设只填默认值，Key 仍共用 `classifier.api_key`（换供应商
- * 要重填 Key）。配置是非秘密 settings，保存后不清空草稿。
+ * 要重填 Key）。配置是非秘密 settings，保存后不清空草稿；Key 保存成功后由调用方
+ * 清空输入框。
+ *
+ * 验证只使用**已保存**的配置：草稿有未保存改动 / 尚未保存配置 / 未配置 Key 时
+ * 按钮禁用，并在卡片内给出可读原因（不会静默发起网络请求）。
  */
-function ProviderCard({ draft, busy, message, onChange, onSave }: ProviderCardProps) {
+function ProviderCard({
+  draft,
+  savedProfile,
+  busy,
+  message,
+  keyStatus,
+  keyLoading,
+  keyLabel,
+  keyDraft,
+  keyBusy,
+  validation,
+  validating,
+  onChange,
+  onSave,
+  onKeyDraftChange,
+  onSaveKey,
+  onClearKey,
+  onValidate,
+}: ProviderCardProps) {
   const presetMeta = providerPreset(draft.preset);
   const messageTypeMeta =
     MESSAGE_TYPE_OPTIONS.find((option) => option.id === draft.messageType) ??
     MESSAGE_TYPE_OPTIONS[0];
+
+  // 「验证」用已保存的 Base URL / 模型：配置完整、草稿无改动、Key 已配置才可点。
+  const savedComplete =
+    savedProfile !== null &&
+    savedProfile.baseUrl.trim() !== "" &&
+    savedProfile.model.trim() !== "";
+  const draftDirty =
+    savedProfile !== null && !providerProfilesEqual(draft, savedProfile);
+  const keyConfigured = keyStatus?.state === "configured";
+  const canValidate = savedComplete && keyConfigured && !draftDirty;
+  const validationHint = !savedProfile
+    ? "先保存供应商配置（Base URL 与模型），再点「验证连接」检查 Key、权限或代理。"
+    : !savedComplete
+      ? "供应商配置还不完整：补全 Base URL 与模型并保存后再验证。"
+      : !keyConfigured
+        ? "保存 API Key 后即可验证连接。"
+        : "验证使用已保存的供应商配置与系统钥匙串里的 Key。";
+
   return (
     <div
       data-provider-card
@@ -208,16 +260,6 @@ function ProviderCard({ draft, busy, message, onChange, onSave }: ProviderCardPr
             同一时间只启用一套配置；换供应商需重填 Key
           </span>
         </div>
-        <button
-          type="button"
-          data-hud-hitbox
-          data-provider-save
-          onClick={onSave}
-          disabled={busy}
-          className="pixel-box-sm hud-focus-ring rounded border border-amber-500/70 bg-amber-500/10 px-2.5 py-1 font-mono text-[10px] text-amber-100 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
-        >
-          {busy ? "保存中…" : "保存供应商配置"}
-        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -296,6 +338,55 @@ function ProviderCard({ draft, busy, message, onChange, onSave }: ProviderCardPr
         </p>
       </div>
 
+      <div className="mt-2 flex flex-col gap-1.5">
+        {keyStatus ? (
+          <CredentialRow
+            status={keyStatus}
+            label={keyLabel}
+            draft={keyDraft}
+            busy={keyBusy}
+            onDraftChange={onKeyDraftChange}
+            onSave={onSaveKey}
+            onClear={onClearKey}
+          />
+        ) : (
+          <div
+            data-credential-row="classifierApiKey"
+            className="rounded border border-dashed border-stone-800/80 bg-stone-950/40 px-2.5 py-2 font-mono text-[10px] text-stone-500"
+          >
+            {keyLoading ? "正在读取钥匙串状态…" : "凭证状态不可用（核心库未启动）"}
+          </div>
+        )}
+        <p className="font-mono text-[9px] leading-relaxed text-stone-600">
+          API Key 只存系统钥匙串固定条目{" "}
+          <span className="text-stone-500">classifier.api_key</span>
+          ；换供应商需重填 Key。
+        </p>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-stone-800/70 pt-2">
+        <button
+          type="button"
+          data-hud-hitbox
+          data-provider-save
+          onClick={onSave}
+          disabled={busy}
+          className="pixel-box-sm hud-focus-ring rounded border border-amber-500/70 bg-amber-500/10 px-2.5 py-1 font-mono text-[10px] text-amber-100 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
+        >
+          {busy ? "保存中…" : "保存供应商配置"}
+        </button>
+        <button
+          type="button"
+          data-hud-hitbox
+          data-credential-action="validate"
+          onClick={onValidate}
+          disabled={!canValidate || validating}
+          className="pixel-box-sm hud-focus-ring rounded border border-stone-700 px-2.5 py-1 font-mono text-[10px] text-stone-200 transition-colors hover:border-amber-500/70 hover:text-white disabled:opacity-50"
+        >
+          {validating ? "验证中…" : "验证连接"}
+        </button>
+      </div>
+
       {message && (
         <p
           data-provider-message={message.tone}
@@ -310,10 +401,16 @@ function ProviderCard({ draft, busy, message, onChange, onSave }: ProviderCardPr
         </p>
       )}
 
-      <p className="mt-2 font-mono text-[9px] leading-relaxed text-stone-600">
-        Key 存在系统钥匙串的固定条目 <span className="text-stone-500">classifier.api_key</span>
-        ：换供应商后请重新保存 Key，再验证连接。
-      </p>
+      {draftDirty && (
+        <p
+          data-provider-dirty
+          className="mt-2 rounded border border-amber-500/40 bg-amber-500/5 px-2 py-1 font-mono text-[10px] leading-relaxed text-amber-200"
+        >
+          ⚠ 草稿有未保存的改动：先点「保存供应商配置」，验证与分类才会使用新配置。
+        </p>
+      )}
+
+      <ValidationLine validation={validation} idleHint={validationHint} />
     </div>
   );
 }
@@ -354,8 +451,6 @@ interface CredentialGroupProps {
   validation: CredentialValidationView | null;
   validating: boolean;
   canValidate: boolean;
-  /** 未验证过时的引导语（分类器组提示先保存供应商配置）。 */
-  idleHint?: string;
   onValidate: () => void;
 }
 
@@ -366,7 +461,6 @@ function CredentialGroup({
   validation,
   validating,
   canValidate,
-  idleHint,
   onValidate,
 }: CredentialGroupProps) {
   return (
@@ -388,7 +482,7 @@ function CredentialGroup({
         </button>
       </div>
       <div className="flex flex-col gap-2">{rows}</div>
-      <ValidationLine validation={validation} idleHint={idleHint} />
+      <ValidationLine validation={validation} />
     </div>
   );
 }
@@ -446,6 +540,13 @@ function CredentialRow({
           data-hud-hitbox
           data-credential-input={status.kind}
           onChange={(event) => onDraftChange(event.target.value)}
+          onKeyDown={(event) => {
+            // 输入后回车等同点「保存」；输入法组合中的回车不提交，忙碌/空值直接忽略。
+            if (event.nativeEvent.isComposing) return;
+            if (event.key !== "Enter" || busy || !draft.trim()) return;
+            event.preventDefault();
+            onSave();
+          }}
           placeholder={
             status.state === "configured" ? "已配置；输入新值可替换" : "输入后保存到系统钥匙串"
           }

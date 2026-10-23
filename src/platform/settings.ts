@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
+  normalizeProviderProfile,
   providerPreset,
+  validateProviderProfile,
   type CredentialKind,
   type CredentialStatus,
   type HudStore,
@@ -9,56 +11,15 @@ import {
   type ValidationTarget,
 } from "../hud-model";
 
+// 纯函数留在 hud-model 供组件复用；这里转出保持既有调用方/测试的导入路径不变。
+export { normalizeProviderProfile, validateProviderProfile };
+
 /** Shell → webview: tray「设置…」；与 src-tauri/src/events.rs 保持同步。 */
 export const SETTINGS_OPEN_EVENT = "hud://settings/open";
 /** Shell → webview: tray「关于 / 检查更新」；本票先打开设置弹层的「关于」分区。 */
 export const ABOUT_OPEN_EVENT = "hud://about/open";
 
 type Dispatch = HudStore["dispatch"];
-
-/** base URL / 模型 ID 的长度上限与 Rust 端保持一致。 */
-const PROVIDER_BASE_URL_MAX = 2048;
-const PROVIDER_MODEL_MAX = 256;
-
-/** 保存前规范化：去空白、去掉 base URL 末尾的 `/`（与 Rust 端一致）。 */
-export function normalizeProviderProfile(profile: ProviderProfile): ProviderProfile {
-  return {
-    preset: profile.preset,
-    baseUrl: profile.baseUrl.trim().replace(/\/+$/, ""),
-    model: profile.model.trim(),
-    messageType: profile.messageType,
-  };
-}
-
-/**
- * 供应商配置的前端校验（后端会再校验一次）：只给可读原因，不猜端点是否真实存在。
- * 返回 null 表示通过。
- */
-export function validateProviderProfile(profile: ProviderProfile): string | null {
-  const baseUrl = profile.baseUrl.trim();
-  if (!baseUrl) {
-    return "Base URL 不能为空（自定义供应商需填写完整端点，例如 https://api.example.com/v1）";
-  }
-  if (baseUrl.length > PROVIDER_BASE_URL_MAX) {
-    return `Base URL 过长（最多 ${PROVIDER_BASE_URL_MAX} 个字符）`;
-  }
-  if (!/^https?:\/\//i.test(baseUrl)) {
-    return `Base URL 必须以 http:// 或 https:// 开头：${baseUrl}`;
-  }
-  try {
-    new URL(baseUrl);
-  } catch {
-    return `Base URL 格式不正确：${baseUrl}`;
-  }
-  const model = profile.model.trim();
-  if (!model) {
-    return "模型 ID 不能为空（例如 qwen-flash / gpt-4o-mini / deepseek-chat）";
-  }
-  if (model.length > PROVIDER_MODEL_MAX) {
-    return `模型 ID 过长（最多 ${PROVIDER_MODEL_MAX} 个字符）`;
-  }
-  return null;
-}
 
 /**
  * 读取活动供应商配置（#45 前置）。读取失败只给一次性提示，设置页其余部分照常可用；
@@ -144,6 +105,14 @@ export async function loadCredentialStatuses(dispatch: Dispatch): Promise<void> 
 }
 
 /**
+ * 凭证提示里的展示名：分类器 Key 的 core 固定 label 是「百炼 API Key」，换成
+ * 其他供应商后与卡片里随活动供应商变化的展示名不一致，提示改用供应商无关的名字。
+ */
+function credentialMessageLabel(kind: CredentialKind, status: CredentialStatus): string {
+  return kind === "classifierApiKey" ? "分类器 API Key" : status.label;
+}
+
+/**
  * 保存一项凭证：密钥经 IPC 进系统钥匙串，界面只拿回状态与引用。
  * 返回 true 表示保存成功（调用方据此清空输入框）；失败时保留输入便于重试。
  */
@@ -166,7 +135,7 @@ export async function saveCredential(
       type: "set-credential-message",
       message: {
         tone: "ok",
-        text: `${status.label} 已保存到系统钥匙串（数据库只存引用）`,
+        text: `${credentialMessageLabel(kind, status)} 已保存到系统钥匙串（数据库只存引用）`,
       },
     });
     return true;
@@ -194,7 +163,7 @@ export async function clearCredential(
       type: "set-credential-message",
       message: {
         tone: "ok",
-        text: `${status.label} 已从系统钥匙串清除`,
+        text: `${credentialMessageLabel(kind, status)} 已从系统钥匙串清除`,
       },
     });
     return true;

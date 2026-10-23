@@ -62,6 +62,13 @@ export {
   hudReducer,
 } from "./state";
 export {
+  PROVIDER_BASE_URL_MAX,
+  PROVIDER_MODEL_MAX,
+  normalizeProviderProfile,
+  providerProfilesEqual,
+  validateProviderProfile,
+} from "./provider";
+export {
   COMPOSITION_GRACE_MS,
   isIngestShortcut,
   resolveEscapeCommand,
