@@ -110,6 +110,77 @@ export interface SettingsRowState {
   readonly expanded: boolean;
 }
 
+/**
+ * 设置弹层的十个分区（#24 §8 / #29）：左侧导航顺序即本枚举顺序。
+ * 本票只实现「凭证」，其余分区显示占位并由后续票接入。
+ */
+export type SettingsSectionId =
+  | "general"
+  | "appearance"
+  | "classifier"
+  | "network"
+  | "credentials"
+  | "ingestion"
+  | "tags"
+  | "taxonomy"
+  | "data"
+  | "about";
+
+/** 凭证种类（与 aether-core::credentials::CredentialKind 同形）。 */
+export type CredentialKind =
+  | "classifierApiKey"
+  | "jinaApiKey"
+  | "feishuAppId"
+  | "feishuAppSecret";
+
+/** 三态凭证状态；界面只显示这三个字面量，永不显示密钥。 */
+export type CredentialState = "configured" | "not_configured" | "unavailable";
+
+/** 一项凭证的状态（与 aether-core::credentials::CredentialStatus 同形）。 */
+export interface CredentialStatus {
+  readonly kind: CredentialKind;
+  readonly account: string;
+  readonly label: string;
+  readonly state: CredentialState;
+  /** keychain://aetherhud/<account> 引用；只用于展示，不含密钥。 */
+  readonly reference: string;
+}
+
+/** 可点「验证」的三个连通性目标。 */
+export type ValidationTarget = "classifier" | "jina" | "feishu";
+
+/** 一次验证的结果；detail 已由核心库脱敏。 */
+export interface CredentialValidationView {
+  readonly target: ValidationTarget;
+  readonly ok: boolean;
+  readonly detail: string;
+}
+
+/** 凭证区的忙碌键：单项保存/清除用 CredentialKind，验证用 ValidationTarget。 */
+export type CredentialBusyKey = CredentialKind | ValidationTarget;
+
+/** 凭证区顶部的一次性反馈（保存/清除/读取失败）。 */
+export interface CredentialMessage {
+  readonly tone: "ok" | "error";
+  readonly text: string;
+}
+
+/** 凭证区数据：状态 + 忙碌 + 验证结果 + 一次性反馈。 */
+export interface CredentialsState {
+  readonly statuses: readonly CredentialStatus[];
+  readonly loading: boolean;
+  readonly busy: CredentialBusyKey | null;
+  readonly validations: readonly CredentialValidationView[];
+  readonly message: CredentialMessage | null;
+}
+
+/** 设置弹层（S0–S3 之外的浮层，和快速录入/收件箱同级）。 */
+export interface SettingsState {
+  readonly open: boolean;
+  readonly section: SettingsSectionId;
+  readonly credentials: CredentialsState;
+}
+
 /** 收件箱 keyset 游标（与 aether-core::inbox::InboxCursor 同形）。 */
 export interface InboxCursor {
   readonly createdAt: number;
@@ -177,6 +248,8 @@ export interface HudState {
   readonly quickInput: QuickInputState | null;
   /** 设置球展开的入口行（收件箱/全部/…/关于）。 */
   readonly settingsRow: SettingsRowState;
+  /** 设置弹层：十区导航 + 凭证区（#29）。 */
+  readonly settings: SettingsState;
   /** 收件箱列表视图。 */
   readonly inbox: InboxState;
   readonly notice: HudNotice | null;
@@ -199,6 +272,15 @@ export type HudCommand =
   | { readonly type: "set-quick-input-submitting"; readonly submitting: boolean }
   | { readonly type: "toggle-settings-row" }
   | { readonly type: "collapse-settings-row" }
+  | { readonly type: "open-settings"; readonly section?: SettingsSectionId }
+  | { readonly type: "close-settings" }
+  | { readonly type: "select-settings-section"; readonly section: SettingsSectionId }
+  | { readonly type: "set-credentials-loading"; readonly loading: boolean }
+  | { readonly type: "set-credential-statuses"; readonly statuses: readonly CredentialStatus[] }
+  | { readonly type: "update-credential-status"; readonly status: CredentialStatus }
+  | { readonly type: "set-credential-busy"; readonly busy: CredentialBusyKey | null }
+  | { readonly type: "set-credential-validation"; readonly validation: CredentialValidationView }
+  | { readonly type: "set-credential-message"; readonly message: CredentialMessage | null }
   | { readonly type: "open-inbox" }
   | { readonly type: "close-inbox" }
   | { readonly type: "set-inbox-loading"; readonly loading: boolean }

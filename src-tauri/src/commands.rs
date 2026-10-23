@@ -4,6 +4,9 @@
 use std::sync::Arc;
 
 use aether_core::adapters::{Clock, SystemClock};
+use aether_core::credentials::{
+    CredentialKind, CredentialStatus, ValidationOutcome, ValidationTarget,
+};
 use aether_core::inbox::{InboxCursor, InboxPage};
 use aether_core::ingest::IngestOutcome;
 use aether_core::navigation::HudNavigation;
@@ -88,6 +91,49 @@ pub fn hud_inbox(
     cursor: Option<InboxCursor>,
 ) -> Result<InboxPage, String> {
     state.inbox_page(cursor)
+}
+
+/// 凭证区四行状态（已配置 / 未配置 / 钥匙串不可用）；只返回引用，永不返回密钥（#29）。
+#[tauri::command]
+pub fn settings_credential_statuses(
+    state: tauri::State<'_, CoreState>,
+) -> Result<Vec<CredentialStatus>, String> {
+    state.credential_statuses()
+}
+
+/// 保存一项凭证：密钥写系统钥匙串，设置表只落 `keychain://` 引用（#29）。
+#[tauri::command]
+pub fn settings_save_credential(
+    state: tauri::State<'_, CoreState>,
+    kind: CredentialKind,
+    secret: String,
+) -> Result<CredentialStatus, String> {
+    state.save_credential(kind, &secret)
+}
+
+/// 清除一项凭证（幂等）：删钥匙串密钥与设置引用（#29）。
+#[tauri::command]
+pub fn settings_clear_credential(
+    state: tauri::State<'_, CoreState>,
+    kind: CredentialKind,
+) -> Result<CredentialStatus, String> {
+    state.clear_credential(kind)
+}
+
+/// 验证凭证连通性：百炼（GET /models）、Jina（一次读）、飞书（tenant_access_token）。
+/// 失败返回可读原因（代理 / Key / 权限），错误串已脱敏（#29）。
+#[tauri::command]
+pub async fn settings_validate_credential(
+    state: tauri::State<'_, CoreState>,
+    target: ValidationTarget,
+) -> Result<ValidationOutcome, String> {
+    state.validate_credential(target).await
+}
+
+/// 设置弹层底部「退出 AetherHUD」（#24 §10：退出只从托盘菜单与设置底部）。
+#[tauri::command]
+pub fn quit_app(app: AppHandle) {
+    app.exit(0);
 }
 
 /// Second launch without `--hidden`: summon the already running HUD (#12).

@@ -53,7 +53,7 @@
 - 左键切换 HUD；右键菜单：`显示 HUD / 收起 HUD`（文案随状态切换）→ `设置…` → `关于 / 检查更新` → 分隔线 → `退出 AetherHUD`；`show_menu_on_left_click(false)`。
 - 状态只进 tooltip（`AetherHUD · 显示中/已收起 · 唤出 Alt + ```）；分类中/待处理/离线挂起文案随管线票接入。
 - macOS 使用 template 图标（`icons/tray-template.png` + `icon_as_template(true)`），并设 Accessory 激活策略（不占 Dock）。
-- `设置…` / `关于` 先唤出 HUD，再发 `hud://settings/open` / `hud://about/open`，分别由 T22 / T23 消费。
+- `设置…` / `关于` 先唤出 HUD，再发 `hud://settings/open` / `hud://about/open`，由设置弹层（#29）消费：「设置…」打开弹层「通用」分区，「关于」打开「关于」分区（分区内容占位，检查更新归 #47）。
 
 ## 8. 单实例与启动参数
 
@@ -82,7 +82,10 @@
 | 前端 → Rust | `hud_take_notices` | 取启动期提示（覆盖层损坏 / 核心库未启动），每次取走即清空（#27） |
 | 前端 → Rust | `ingest_text` | 本地录入：URL 进 fetch stage、纯文本直入 classify stage；双轨去重 + entries/entry_sources/pipeline_jobs 同事务（#28） |
 | 前端 → Rust | `hud_inbox` | 收件箱一页（管线视图 = pending/processing/failed；50 条/页 keyset 分页，created_at 倒序）（#28） |
+| 前端 → Rust | `settings_credential_statuses` / `settings_save_credential` / `settings_clear_credential` | 凭证四行状态、写入钥匙串 + 只落引用、清除（#29） |
+| 前端 → Rust | `settings_validate_credential` | 验证百炼 / Jina / 飞书连通性，返回可读且脱敏的 `{ ok, detail }`（#29） |
 | Rust → 前端 | `hud://inbox-updated` | 入库成功（含重复投递刷新）：收件箱打开时重载第一页（#28） |
+| Rust → 前端 | `hud://settings/open` / `hud://about/open` | 托盘入口：打开设置弹层对应分区（#29） |
 | Rust → 前端（事件顺序） | 唤出：focus 先于 `hud://summon` | 窗口先拿到系统焦点，键盘立即可用（2026-10-23 起不再自动聚焦搜索框） |
 
 ## 11. 验证

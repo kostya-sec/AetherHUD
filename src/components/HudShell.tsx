@@ -10,6 +10,7 @@ import {
   selectSearchExpanded,
   selectSearchFocusRequest,
   selectSearchQuery,
+  selectSettings,
   selectSettingsRow,
   selectVisibleBallSlots,
   type HudCommand,
@@ -18,6 +19,13 @@ import {
 import { publishHitBoxes } from "../platform/hitboxes";
 import { loadInboxFirstPage, loadInboxNextPage } from "../platform/inbox";
 import { submitQuickInput } from "../platform/ingest";
+import {
+  clearCredential,
+  loadCredentialStatuses,
+  quitApp,
+  saveCredential,
+  validateCredential,
+} from "../platform/settings";
 import { ballTopOffset, ballTopOffsetFor } from "./ballLayout";
 import { HudBallColumn } from "./HudBallColumn";
 import { HudInboxView } from "./HudInboxView";
@@ -27,11 +35,12 @@ import { HudL3Bar } from "./HudL3Bar";
 import { HudNoticeBar } from "./HudNoticeBar";
 import { HudQuickInputModal } from "./HudQuickInputModal";
 import { HudSearchBar } from "./HudSearchBar";
+import { HudSettingsModal } from "./HudSettingsModal";
 import { HudSettingsRow } from "./HudSettingsRow";
+import { HUD_OPACITY } from "./hudSurface";
 import { RainBackground } from "./RainBackground";
 
-/** Prototype defaults from #7; the settings layer owns these later (T22). */
-const HUD_OPACITY = 0.65;
+/** Prototype default from #7; the appearance settings layer owns this later (#46). */
 const RAIN_DENSITY = 0.8;
 
 interface HudShellProps {
@@ -54,9 +63,10 @@ export function HudShell({ state, dispatch }: HudShellProps) {
   const notice = selectNotice(state);
   const quickInput = selectQuickInput(state);
   const settingsRow = selectSettingsRow(state);
+  const settings = selectSettings(state);
   const inbox = selectInbox(state);
-  // 弹窗/列表视图打开时，底层内容 inert：Tab 不逃出弹窗、点击不误触球列。
-  const overlayOpen = quickInput !== null || inbox.open;
+  // 弹窗/列表视图/设置弹层打开时，底层内容 inert：Tab 不逃出弹层、点击不误触球列。
+  const overlayOpen = quickInput !== null || inbox.open || settings.open;
 
   // L2 面板与被点 L1 球顶部平行对齐：同一套几何常数计算球顶偏移（#27 验收）。
   const activeBallIndex = activeL1Id
@@ -95,6 +105,7 @@ export function HudShell({ state, dispatch }: HudShellProps) {
     quickInput !== null,
     settingsRow.expanded,
     inbox.open,
+    settings.open,
   ]);
 
   // 收件箱打开/收到 inbox-updated 时重载第一页；翻页由「加载更多」显式触发。
@@ -104,6 +115,13 @@ export function HudShell({ state, dispatch }: HudShellProps) {
     if (!inboxOpen) return;
     void loadInboxFirstPage(dispatch);
   }, [inboxOpen, inboxRevision, dispatch]);
+
+  // 设置弹层每次打开都重读凭证状态：钥匙串可能在别处被改（#29）。
+  const settingsOpen = settings.open;
+  useEffect(() => {
+    if (!settingsOpen) return;
+    void loadCredentialStatuses(dispatch);
+  }, [settingsOpen, dispatch]);
 
   useEffect(() => {
     const republish = () => publishHitBoxes();
@@ -188,8 +206,9 @@ export function HudShell({ state, dispatch }: HudShellProps) {
                 view={settingsRow}
                 hudOpacity={HUD_OPACITY}
                 onSelect={(itemId) => {
-                  // 本票只实现收件箱；其余入口 enabled=false，不会到这里。
+                  // 本票接通收件箱与设置；其余入口 enabled=false，不会到这里。
                   if (itemId === "inbox") dispatch({ type: "open-inbox" });
+                  else if (itemId === "settings") dispatch({ type: "open-settings" });
                 }}
               />
             )}
@@ -205,6 +224,21 @@ export function HudShell({ state, dispatch }: HudShellProps) {
           hudOpacity={HUD_OPACITY}
           onSubmit={(text) => void submitQuickInput(dispatch, text)}
           onClose={() => dispatch({ type: "close-quick-input" })}
+        />
+      )}
+
+      {settings.open && (
+        <HudSettingsModal
+          settings={settings}
+          hudOpacity={HUD_OPACITY}
+          onClose={() => dispatch({ type: "close-settings" })}
+          onSelectSection={(section) =>
+            dispatch({ type: "select-settings-section", section })
+          }
+          onSaveCredential={(kind, secret) => saveCredential(dispatch, kind, secret)}
+          onClearCredential={(kind) => clearCredential(dispatch, kind)}
+          onValidate={(target) => validateCredential(dispatch, target)}
+          onQuit={quitApp}
         />
       )}
 

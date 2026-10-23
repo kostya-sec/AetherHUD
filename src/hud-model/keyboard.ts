@@ -92,13 +92,16 @@ export function isIngestShortcut(input: KeyDownLike): boolean {
 }
 
 /**
- * Esc 的「退一层」顺序（#17 §5.1）：弹窗 → 列表视图 → 展开的入口行 → 收起 HUD。
+ * Esc 的「退一层」顺序（#17 §5.1）：快速录入弹窗 → 设置弹层 → 列表视图 → 展开的
+ * 入口行 → 收起 HUD。设置弹层与快速录入弹窗互斥，顺序只保证任一层打开时 Esc 只退
+ * 一层并回到 HUD 原处。
  *
  * 返回 null 表示没有可关闭的层，调用方按全局 Esc 收起 HUD。收起动画/输入法组合态
  * 仍由 resolveGlobalKeyDown 先行处理。
  */
 export function resolveEscapeCommand(state: HudState): HudCommand | null {
   if (state.quickInput !== null) return { type: "close-quick-input" };
+  if (state.settings.open) return { type: "close-settings" };
   if (state.inbox.open) return { type: "close-inbox" };
   if (state.settingsRow.expanded) return { type: "collapse-settings-row" };
   return null;

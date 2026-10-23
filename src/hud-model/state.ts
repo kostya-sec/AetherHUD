@@ -1,3 +1,4 @@
+import { CREDENTIAL_KINDS, DEFAULT_SETTINGS_SECTION } from "./constants";
 import type { HudCommand, HudNavigation, HudState, HudStore } from "./types";
 
 /**
@@ -28,6 +29,17 @@ export function createDefaultHudState(
     l3Bar: { expanded: false },
     quickInput: null,
     settingsRow: { expanded: false },
+    settings: {
+      open: false,
+      section: DEFAULT_SETTINGS_SECTION,
+      credentials: {
+        statuses: [],
+        loading: false,
+        busy: null,
+        validations: [],
+        message: null,
+      },
+    },
     inbox: {
       open: false,
       entries: [],
@@ -38,6 +50,21 @@ export function createDefaultHudState(
     notice: null,
     phase: "visible",
   };
+}
+
+/** 保存/清除某凭证后，哪些验证结论会过期（同一外部服务）。 */
+function credentialValidationTargets(
+  kind: HudState["settings"]["credentials"]["statuses"][number]["kind"],
+): ReadonlyArray<HudState["settings"]["credentials"]["validations"][number]["target"]> {
+  switch (kind) {
+    case "classifierApiKey":
+      return ["classifier"];
+    case "jinaApiKey":
+      return ["jina"];
+    case "feishuAppId":
+    case "feishuAppSecret":
+      return ["feishu"];
+  }
 }
 
 export function hudReducer(state: HudState, command: HudCommand): HudState {
@@ -182,6 +209,165 @@ export function hudReducer(state: HudState, command: HudCommand): HudState {
     case "collapse-settings-row": {
       if (!state.settingsRow.expanded) return state;
       return { ...state, settingsRow: { expanded: false } };
+    }
+
+    case "open-settings": {
+      const section = command.section ?? DEFAULT_SETTINGS_SECTION;
+      if (state.settings.open) {
+        if (section === state.settings.section) return state;
+        return { ...state, settings: { ...state.settings, section } };
+      }
+      // 与入口行/面板同屏互斥；打开即开始读取凭证状态（loading 防闪烁，数据由平台层送来）。
+      return {
+        ...state,
+        settingsRow: { expanded: false },
+        l2Panel: null,
+        l3Bar: { expanded: false },
+        settings: {
+          ...state.settings,
+          open: true,
+          section,
+          credentials: {
+            ...state.settings.credentials,
+            loading: true,
+            busy: null,
+            message: null,
+          },
+        },
+      };
+    }
+
+    case "close-settings": {
+      if (!state.settings.open) return state;
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          open: false,
+          credentials: {
+            ...state.settings.credentials,
+            loading: false,
+            busy: null,
+          },
+        },
+      };
+    }
+
+    case "select-settings-section": {
+      if (!state.settings.open) return state;
+      if (state.settings.section === command.section) return state;
+      return {
+        ...state,
+        settings: { ...state.settings, section: command.section },
+      };
+    }
+
+    case "set-credentials-loading": {
+      if (!state.settings.open) return state;
+      if (state.settings.credentials.loading === command.loading) return state;
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          credentials: {
+            ...state.settings.credentials,
+            loading: command.loading,
+          },
+        },
+      };
+    }
+
+    case "set-credential-statuses": {
+      if (!state.settings.open) return state;
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          credentials: {
+            ...state.settings.credentials,
+            statuses: command.statuses,
+            loading: false,
+          },
+        },
+      };
+    }
+
+    case "update-credential-status": {
+      if (!state.settings.open) return state;
+      const current = state.settings.credentials.statuses;
+      const known = current.some((status) => status.kind === command.status.kind);
+      const statuses = known
+        ? current.map((status) =>
+            status.kind === command.status.kind ? command.status : status,
+          )
+        : // 状态页还没加载完就保存成功时，按四行固定顺序补进列表。
+          [...current, command.status].sort(
+            (a, b) =>
+              CREDENTIAL_KINDS.indexOf(a.kind) - CREDENTIAL_KINDS.indexOf(b.kind),
+          );
+      // 保存/清除会让相关验证结论过期：只保留与本次无关的 target。
+      const staleTargets = credentialValidationTargets(command.status.kind);
+      const validations = state.settings.credentials.validations.filter(
+        (validation) => !staleTargets.includes(validation.target),
+      );
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          credentials: {
+            ...state.settings.credentials,
+            statuses,
+            validations,
+            loading: false,
+          },
+        },
+      };
+    }
+
+    case "set-credential-busy": {
+      if (!state.settings.open) return state;
+      if (state.settings.credentials.busy === command.busy) return state;
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          credentials: {
+            ...state.settings.credentials,
+            busy: command.busy,
+          },
+        },
+      };
+    }
+
+    case "set-credential-validation": {
+      if (!state.settings.open) return state;
+      const validations = state.settings.credentials.validations.filter(
+        (validation) => validation.target !== command.validation.target,
+      );
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          credentials: {
+            ...state.settings.credentials,
+            validations: [...validations, command.validation],
+          },
+        },
+      };
+    }
+
+    case "set-credential-message": {
+      if (!state.settings.open) return state;
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          credentials: {
+            ...state.settings.credentials,
+            message: command.message,
+          },
+        },
+      };
     }
 
     case "open-inbox": {

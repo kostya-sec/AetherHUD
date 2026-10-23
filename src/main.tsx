@@ -4,6 +4,7 @@ import App from "./App";
 import { createDefaultHudState, createHudStore } from "./hud-model";
 import { connectHudBridge } from "./platform/hudBridge";
 import { connectInboxEvents } from "./platform/inbox";
+import { connectSettingsEvents } from "./platform/settings";
 import { loadHudNavigation } from "./platform/navigation";
 import { revealWindowAfterFirstFrame } from "./platform/window";
 import "./index.css";
@@ -32,6 +33,8 @@ async function boot(): Promise<void> {
   await connectHudBridge(store);
   // 入库事件（hud://inbox-updated）在监听注册后才不会漏；打开收件箱时据此重载第一页。
   await connectInboxEvents(store);
+  // 托盘「设置…」「关于」入口（hud://settings/open、hud://about/open）：打开设置弹层。
+  await connectSettingsEvents(store);
   // The Tauri window is created hidden to avoid a transparent-window white flash.
   revealWindowAfterFirstFrame();
 }

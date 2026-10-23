@@ -1,4 +1,11 @@
-import type { BallSlot, KeyHint, SettingsRowItem, TaxonomyL1 } from "./types";
+import type {
+  BallSlot,
+  CredentialKind,
+  KeyHint,
+  SettingsRowItem,
+  SettingsSectionId,
+  TaxonomyL1,
+} from "./types";
 
 /**
  * Ball column order (#17 §5.4 / PRD v2 §8):
@@ -92,7 +99,10 @@ export const SETTINGS_ROW_KEY_HINTS: readonly KeyHint[] = [
   { keys: ["Esc"], label: "收起入口行" },
 ];
 
-/** 设置球展开入口行（#24 §9 / #28）；未实现项 enabled=false，不可误触发。 */
+/**
+ * 设置球展开入口行（#24 §9 / #28）：本票接通「收件箱」与「设置」，
+ * 其余入口保持占位，等 #34/#35/#37/#46/#47 接入。
+ */
 export const SETTINGS_ROW_ITEMS: readonly SettingsRowItem[] = [
   { id: "inbox", label: "收件箱", enabled: true },
   { id: "all", label: "全部", enabled: false },
@@ -100,8 +110,97 @@ export const SETTINGS_ROW_ITEMS: readonly SettingsRowItem[] = [
   { id: "taxonomy", label: "分类管理", enabled: false },
   { id: "archive", label: "封存箱", enabled: false },
   { id: "trash", label: "回收站", enabled: false },
-  { id: "settings", label: "设置", enabled: false },
+  { id: "settings", label: "设置", enabled: true },
   { id: "about", label: "关于", enabled: false },
+];
+
+/** 凭证区四行顺序（与 aether-core::credentials::CredentialKind::ALL 一致）。 */
+export const CREDENTIAL_KINDS: readonly CredentialKind[] = [
+  "classifierApiKey",
+  "jinaApiKey",
+  "feishuAppId",
+  "feishuAppSecret",
+];
+
+/** 设置弹层默认分区：通用（十区的第一项）。 */
+export const DEFAULT_SETTINGS_SECTION: SettingsSectionId = "general";
+
+export interface SettingsSectionMeta {
+  readonly id: SettingsSectionId;
+  readonly label: string;
+  /** false = 本票只显示占位，后续票接入。 */
+  readonly implemented: boolean;
+  /** 分区职责一句话（占位页也显示，避免"空壳"）。 */
+  readonly summary: string;
+}
+
+/**
+ * 设置弹层左侧十区（#24 §8 / #29）。
+ *
+ * 本票只有「凭证」落地；其余分区一律占位。实现后从这里把 implemented 改为 true，
+ * 占位页自然消失——顺序也是左侧导航顺序。
+ */
+export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
+  {
+    id: "general",
+    label: "通用",
+    implemented: false,
+    summary: "开机自启、在 Dock 中显示、显示时区、退出（#46）",
+  },
+  {
+    id: "appearance",
+    label: "外观与音效",
+    implemented: false,
+    summary: "主题色、HUD 透明度、雨幕密度、音效开关与音量（#46）",
+  },
+  {
+    id: "classifier",
+    label: "分类与分类器",
+    implemented: false,
+    summary: "provider / base URL / model / prompt 版本（只读）/ 测试连接（#45）",
+  },
+  {
+    id: "network",
+    label: "网络",
+    implemented: false,
+    summary: "代理三档（跟随系统 / 自定义 / 直连）与代理凭据（#45）",
+  },
+  {
+    id: "credentials",
+    label: "凭证",
+    implemented: true,
+    summary: "分类 Key、Jina Key、飞书 App ID / App Secret（本票 #29）",
+  },
+  {
+    id: "ingestion",
+    label: "摄入与同步",
+    implemented: false,
+    summary: "webhook 路径与端口、飞书 Base/Table/字段映射/开关（#42 / #44）",
+  },
+  {
+    id: "tags",
+    label: "标签管理",
+    implemented: false,
+    summary: "L3 标签合并、别名、常驻与隐藏（#35）",
+  },
+  {
+    id: "taxonomy",
+    label: "分类管理",
+    implemented: false,
+    summary: "自建节点停用/恢复/改名、覆盖层导出（#41）",
+  },
+  {
+    id: "data",
+    label: "数据",
+    implemented: false,
+    summary: "最近备份、立即备份、打开数据文件夹、清空回收站（#43）",
+  },
+  {
+    id: "about",
+    label: "关于",
+    implemented: false,
+    summary: "版本、检查更新、忽略版本、安装前必读、许可（#47）",
+  },
 ];
 
 /** L3 标签条的**结构顺序**（#17 §5.6）：媒体 chip → 形态标签 → 特征标签。 */

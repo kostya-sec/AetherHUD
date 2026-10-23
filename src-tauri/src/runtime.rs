@@ -7,7 +7,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{AppHandle, Manager};
 
-use aether_core::adapters::{StdFileSystem, SystemClock};
+use aether_core::adapters::{OsKeychain, ReqwestTransport, StdFileSystem, SystemClock};
+use aether_core::credentials::{
+    CredentialKind, CredentialService, CredentialStatus, ValidationOutcome, ValidationTarget,
+};
 use aether_core::inbox::{InboxCursor, InboxPage};
 use aether_core::ingest::IngestOutcome;
 use aether_core::navigation::HudNavigation;
@@ -23,6 +26,10 @@ pub struct CoreState {
     error: Option<String>,
     /// 启动失败提示只给一次（每次唤出都刷同一条会烦人）。
     error_notice_taken: AtomicBool,
+    /// 系统钥匙串适配器（#15 / #29）：领域层只看到 trait，壳在这里注入。
+    keychain: OsKeychain,
+    /// 时钟适配器（凭证引用写入时间；测试注入记忆时钟）。
+    clock: SystemClock,
 }
 
 impl CoreState {
@@ -35,6 +42,8 @@ impl CoreState {
                     core: None,
                     error: Some(error),
                     error_notice_taken: AtomicBool::new(false),
+                    keychain: OsKeychain,
+                    clock: SystemClock,
                 };
             }
         };
@@ -50,6 +59,8 @@ impl CoreState {
                         core: None,
                         error: Some(message),
                         error_notice_taken: AtomicBool::new(false),
+                        keychain: OsKeychain,
+                        clock: SystemClock,
                     };
                 }
             },
@@ -73,6 +84,8 @@ impl CoreState {
                     core: Some(core),
                     error: None,
                     error_notice_taken: AtomicBool::new(false),
+                    keychain: OsKeychain,
+                    clock: SystemClock,
                 }
             }
             Err(error) => {
@@ -82,6 +95,8 @@ impl CoreState {
                     core: None,
                     error: Some(message),
                     error_notice_taken: AtomicBool::new(false),
+                    keychain: OsKeychain,
+                    clock: SystemClock,
                 }
             }
         }
@@ -103,6 +118,51 @@ impl CoreState {
         self.core()?
             .inbox_page(cursor)
             .map_err(|error| error.to_string())
+    }
+
+    /// 凭证区四行状态：已配置 / 未配置 / 钥匙串不可用（#29）。
+    pub fn credential_statuses(&self) -> Result<Vec<CredentialStatus>, String> {
+        Ok(self.credential_service()?.statuses())
+    }
+
+    /// 保存一项凭证：密钥进系统钥匙串，设置表只落 `keychain://` 引用。
+    pub fn save_credential(
+        &self,
+        kind: CredentialKind,
+        secret: &str,
+    ) -> Result<CredentialStatus, String> {
+        self.credential_service()?
+            .save(kind, secret)
+            .map_err(|error| error.to_string())
+    }
+
+    /// 清除一项凭证（幂等）；只删密钥与引用，不碰条目数据。
+    pub fn clear_credential(&self, kind: CredentialKind) -> Result<CredentialStatus, String> {
+        self.credential_service()?
+            .clear(kind)
+            .map_err(|error| error.to_string())
+    }
+
+    /// 验证凭证连通性（百炼 / Jina / 飞书）；失败返回可读原因，不返回密钥。
+    pub async fn validate_credential(
+        &self,
+        target: ValidationTarget,
+    ) -> Result<ValidationOutcome, String> {
+        let transport = ReqwestTransport::new();
+        Ok(self
+            .credential_service()?
+            .validate(target, &transport)
+            .await)
+    }
+
+    /// Keychain + settings + 时钟的组合边界；壳只注入适配器，业务规则全在 core。
+    fn credential_service(&self) -> Result<CredentialService<'_>, String> {
+        let core = self.core()?;
+        Ok(CredentialService::new(
+            &self.keychain,
+            core.database(),
+            &self.clock,
+        ))
     }
 
     fn core(&self) -> Result<&Core, String> {

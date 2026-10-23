@@ -17,6 +17,10 @@ export {
   selectSearchFocusRequest,
   selectSearchOrbVisible,
   selectSearchQuery,
+  selectCredentialValidation,
+  selectSettings,
+  selectSettingsOpen,
+  selectSettingsSection,
   selectSettingsRow,
   selectVisibleBallSlots,
 } from "./selectors";
@@ -30,6 +34,8 @@ export type {
 } from "./selectors";
 export {
   BALL_KEY_HINTS,
+  CREDENTIAL_KINDS,
+  DEFAULT_SETTINGS_SECTION,
   L2_KEY_HINTS,
   L3_FILTER_BALL,
   L3_KEY_HINTS,
@@ -42,8 +48,10 @@ export {
   SETTINGS_BALL,
   SETTINGS_ROW_ITEMS,
   SETTINGS_ROW_KEY_HINTS,
+  SETTINGS_SECTIONS,
   taxonomyBall,
 } from "./constants";
+export type { SettingsSectionMeta } from "./constants";
 export {
   createDefaultHudState,
   createHudStore,
@@ -59,6 +67,13 @@ export type { HudKeyAction, KeyDownLike, KeyGuardContext } from "./keyboard";
 export type {
   BallKind,
   BallSlot,
+  CredentialBusyKey,
+  CredentialKind,
+  CredentialMessage,
+  CredentialState,
+  CredentialStatus,
+  CredentialValidationView,
+  CredentialsState,
   HudCommand,
   HudNotice,
   HudNoticeCode,
@@ -80,7 +95,10 @@ export type {
   SettingsRowItem,
   SettingsRowItemId,
   SettingsRowState,
+  SettingsSectionId,
+  SettingsState,
   TaxonomyFormatTag,
   TaxonomyL1,
   TaxonomyL2,
+  ValidationTarget,
 } from "./types";

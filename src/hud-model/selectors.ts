@@ -24,8 +24,11 @@ import type {
   KeyHint,
   L2PanelState,
   QuickInputState,
+  CredentialsState,
   SettingsRowItem,
+  SettingsState,
   TaxonomyL1,
+  ValidationTarget,
 } from "./types";
 
 /** L2 面板首项「全部子类」的合成 id（纯 UI 条目，不属于 taxonomy）。 */
@@ -129,6 +132,20 @@ export const selectSettingsRow = (state: HudState): SettingsRowView => ({
 });
 
 export const selectInbox = (state: HudState): InboxState => state.inbox;
+
+export const selectSettings = (state: HudState): SettingsState => state.settings;
+
+export const selectSettingsOpen = (state: HudState): boolean => state.settings.open;
+
+export const selectSettingsSection = (state: HudState): SettingsState["section"] =>
+  state.settings.section;
+
+/** 一次验证结果（按 target 取）；没验证过返回 null。 */
+export const selectCredentialValidation = (
+  credentials: CredentialsState,
+  target: ValidationTarget,
+) =>
+  credentials.validations.find((entry) => entry.target === target) ?? null;
 
 export interface InboxStatusBadge {
   readonly label: string;

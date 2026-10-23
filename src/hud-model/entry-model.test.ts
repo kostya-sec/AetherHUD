@@ -97,7 +97,7 @@ describe("快速录入（Mod+Enter）", () => {
 });
 
 describe("设置球入口行", () => {
-  it("入口顺序固定，只有收件箱已实现（其余占位不可触发）", () => {
+  it("入口顺序固定，收件箱与设置已实现（其余占位不可触发）", () => {
     expect(SETTINGS_ROW_ITEMS.map((item) => item.label)).toEqual([
       "收件箱",
       "全部",
@@ -110,6 +110,7 @@ describe("设置球入口行", () => {
     ]);
     expect(SETTINGS_ROW_ITEMS.filter((item) => item.enabled).map((item) => item.id)).toEqual([
       "inbox",
+      "settings",
     ]);
   });
 

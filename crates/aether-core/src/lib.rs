@@ -4,6 +4,7 @@
 //! 不依赖 Tauri、不直接摸系统 API：壳把 app_data_dir、底表路径与适配器注入进来。
 
 pub mod adapters;
+pub mod credentials;
 pub mod ids;
 pub mod inbox;
 pub mod ingest;

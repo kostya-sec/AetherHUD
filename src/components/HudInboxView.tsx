@@ -5,7 +5,7 @@ import {
   type InboxEntry,
   type InboxState,
 } from "../hud-model";
-import { hudSurfaceStyle } from "./hudSurface";
+import { modalSurfaceStyle } from "./hudSurface";
 
 interface HudInboxViewProps {
   inbox: InboxState;
@@ -42,7 +42,7 @@ export function HudInboxView({
         data-hud-hitbox
         onClick={(event) => event.stopPropagation()}
         className="pixel-box mx-auto flex h-full w-full max-w-3xl flex-col rounded-xl border border-stone-700/90 p-4"
-        style={hudSurfaceStyle(Math.min(hudOpacity + 0.03, 1))}
+        style={modalSurfaceStyle(hudOpacity)}
       >
         <header className="mb-3 flex items-center justify-between gap-3 border-b border-stone-800/80 pb-2">
           <div className="flex items-baseline gap-3">

@@ -49,6 +49,11 @@ pub fn run() {
             commands::hud_take_notices,
             commands::ingest_text,
             commands::hud_inbox,
+            commands::settings_credential_statuses,
+            commands::settings_save_credential,
+            commands::settings_clear_credential,
+            commands::settings_validate_credential,
+            commands::quit_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AetherHUD");

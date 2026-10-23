@@ -10,6 +10,7 @@ import {
   hudReducer,
   selectInbox,
   selectQuickInput,
+  selectSettings,
 } from "../hud-model";
 import { applyGlobalKey, applyKeyAction, dismissHud } from "./hudBridge";
 
@@ -99,6 +100,17 @@ describe("Esc 先关最上层，再收起 HUD", () => {
     applyGlobalKey(fakeEvent(), store, noComposition, immediately);
 
     expect(selectInbox(store.getState()).open).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("设置弹层打开时 Esc 只关弹层，回到 HUD 原处", () => {
+    const store = createHudStore(
+      hudReducer(createDefaultHudState(), { type: "open-settings" }),
+    );
+
+    applyGlobalKey(fakeEvent(), store, noComposition, immediately);
+
+    expect(selectSettings(store.getState()).open).toBe(false);
     expect(invokeMock).not.toHaveBeenCalled();
   });
 

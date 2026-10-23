@@ -7,7 +7,8 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Mutex;
 
 use super::{
-    Clock, FileSystem, HttpError, HttpFuture, HttpRequest, HttpResponse, Keychain, KeychainError,
+    Clock, FileSystem, HttpError, HttpFuture, HttpMethod, HttpRequest, HttpResponse, Keychain,
+    KeychainError,
 };
 
 /// 可拨动的时钟，用于覆盖层损坏快照名、meta 时间戳等确定性断言。
@@ -107,10 +108,15 @@ impl FileSystem for MemoryFileSystem {
     }
 }
 
-/// 假 HTTP：按注册顺序返回响应，并记录请求；没有注册响应即记为传输错误。
+/// 假 HTTP：按 (方法, URL) 注册顺序返回响应，并记录请求；没有注册响应即记为传输错误。
+///
+/// 抓取链里 GET 是常态；凭证验证里飞书 token 是 v1 唯一的 POST，所以按方法分队列。
+/// (is_post, url) → 依次返回的响应/传输错误。
+type FakeResponses = BTreeMap<(bool, String), VecDeque<Result<HttpResponse, String>>>;
+
 #[derive(Debug, Default)]
 pub struct FakeHttpTransport {
-    responses: Mutex<BTreeMap<String, VecDeque<HttpResponse>>>,
+    responses: Mutex<FakeResponses>,
     requests: Mutex<Vec<HttpRequest>>,
 }
 
@@ -119,13 +125,39 @@ impl FakeHttpTransport {
         Self::default()
     }
 
-    pub fn enqueue(&self, url: impl Into<String>, response: HttpResponse) {
+    fn enqueue_result(
+        &self,
+        method: HttpMethod,
+        url: impl Into<String>,
+        response: Result<HttpResponse, String>,
+    ) {
+        let is_post = method == HttpMethod::Post;
         self.responses
             .lock()
             .unwrap()
-            .entry(url.into())
+            .entry((is_post, url.into()))
             .or_default()
             .push_back(response);
+    }
+
+    /// 注册一次 GET 响应。
+    pub fn enqueue(&self, url: impl Into<String>, response: HttpResponse) {
+        self.enqueue_result(HttpMethod::Get, url, Ok(response));
+    }
+
+    /// 注册一次 POST 响应（凭证验证的飞书 token）。
+    pub fn enqueue_post(&self, url: impl Into<String>, response: HttpResponse) {
+        self.enqueue_result(HttpMethod::Post, url, Ok(response));
+    }
+
+    /// 注册一次 GET 传输错误。
+    pub fn enqueue_error(&self, url: impl Into<String>, message: impl Into<String>) {
+        self.enqueue_result(HttpMethod::Get, url, Err(message.into()));
+    }
+
+    /// 注册一次 POST 传输错误。
+    pub fn enqueue_post_error(&self, url: impl Into<String>, message: impl Into<String>) {
+        self.enqueue_result(HttpMethod::Post, url, Err(message.into()));
     }
 
     pub fn requests(&self) -> Vec<HttpRequest> {
@@ -134,18 +166,29 @@ impl FakeHttpTransport {
 }
 
 impl super::HttpTransport for FakeHttpTransport {
-    fn get<'a>(&'a self, request: HttpRequest) -> HttpFuture<'a> {
+    fn request<'a>(&'a self, request: HttpRequest) -> HttpFuture<'a> {
         self.requests.lock().unwrap().push(request.clone());
+        let key = (request.method == HttpMethod::Post, request.url.clone());
         let response = self
             .responses
             .lock()
             .unwrap()
-            .get_mut(&request.url)
+            .get_mut(&key)
             .and_then(VecDeque::pop_front);
         Box::pin(async move {
-            response.ok_or_else(|| {
-                HttpError::Transport(format!("no fake response for {}", request.url))
-            })
+            match response {
+                Some(Ok(response)) => Ok(response),
+                Some(Err(message)) => Err(HttpError::Transport(message)),
+                None => Err(HttpError::Transport(format!(
+                    "no fake response for {} {}",
+                    if request.method == HttpMethod::Post {
+                        "POST"
+                    } else {
+                        "GET"
+                    },
+                    request.url
+                ))),
+            }
         })
     }
 }
@@ -163,6 +206,30 @@ impl MemoryKeychain {
 
     pub fn contains(&self, account: &str) -> bool {
         self.secrets.lock().unwrap().contains_key(account)
+    }
+}
+
+/// 钥匙串完全不可用（Linux 或无权限）：读/写/删都报错，供降级路径测试。
+#[derive(Debug, Default, Clone, Copy)]
+pub struct UnavailableKeychain;
+
+impl Keychain for UnavailableKeychain {
+    fn get_secret(&self, _account: &str) -> Result<Option<String>, KeychainError> {
+        Err(KeychainError::Unavailable(
+            "测试注入：钥匙串不可用".to_string(),
+        ))
+    }
+
+    fn set_secret(&self, _account: &str, _secret: &str) -> Result<(), KeychainError> {
+        Err(KeychainError::Unavailable(
+            "测试注入：钥匙串不可用".to_string(),
+        ))
+    }
+
+    fn delete_secret(&self, _account: &str) -> Result<(), KeychainError> {
+        Err(KeychainError::Unavailable(
+            "测试注入：钥匙串不可用".to_string(),
+        ))
     }
 }
 

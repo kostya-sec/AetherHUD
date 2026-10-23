@@ -44,7 +44,7 @@
 
 ### 2.2 用户怎么把凭证放进去
 
-v1 设置页「凭证管理」分区（PRD v2 待写 UI 细节）负责写入；应用首次写入后，在设置页可看到「已存于系统钥匙串」状态，不显示明文。开发阶段用脚本验证（见 §4），暂不写入系统存储。
+v1 设置页「凭证」分区（信息架构见 [settings-ia.md](./settings-ia.md)；#29 已落地）负责写入：逐项保存 / 清除 / 显示已配置状态，并可验证连通性。应用写入后，设置页只显示「已配置」与 `keychain://aetherhud/<account>` 引用，不显示明文。开发阶段用脚本验证（见 §4）仍可用，但脚本不是运行时来源。
 
 ## 3. 怎么拿
 
@@ -103,7 +103,7 @@ v1 分类引擎走 OpenAI 兼容协议，百炼正好提供兼容端点，且用
 
 ## 4. 怎么验证
 
-脚本：`scripts/setup/verify-keys.mjs`（零依赖，Node 18+）。
+脚本：`scripts/setup/verify-keys.mjs`（零依赖，Node 18+）。应用内设置页的「验证连接」（#29）复用同一组请求：百炼 `GET {base}/models`、Jina `GET r.jina.ai` 一次读、飞书 `POST tenant_access_token/internal`；失败按代理 / Key / 权限给可读原因（详见 [settings-ia.md](./settings-ia.md) §4.4）。
 
 ```
 # 1. 把凭证填进 .local/keys.env（模板见 §4.1）

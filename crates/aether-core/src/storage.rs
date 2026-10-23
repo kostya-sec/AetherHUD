@@ -209,6 +209,12 @@ pub enum StorageError {
     MetaWrite(#[source] rusqlite::Error),
     #[error("写入条目失败：{0}")]
     Ingest(#[source] rusqlite::Error),
+    #[error("读取设置失败：{0}")]
+    SettingsRead(#[source] rusqlite::Error),
+    #[error("写入设置失败：{0}")]
+    SettingsWrite(#[source] rusqlite::Error),
+    #[error("设置值不是合法 JSON：{0}")]
+    SettingsJson(#[source] serde_json::Error),
     #[error("读取收件箱失败：{0}")]
     Inbox(#[source] rusqlite::Error),
     #[error("数据库连接锁已中毒")]
@@ -293,6 +299,59 @@ impl Database {
         }
         self.meta_set(TAXONOMY_VERSION_META_KEY, version, now_ms)?;
         Ok(true)
+    }
+
+    /// 读取设置项（value_json 反序列化）。未设置返回 None；坏 JSON 给出可读错误。
+    pub fn setting_get<T: serde::de::DeserializeOwned>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>, StorageError> {
+        let raw = {
+            let connection = self.lock()?;
+            connection
+                .query_row(
+                    "SELECT value_json FROM settings WHERE key = ?1",
+                    [key],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(StorageError::SettingsRead)?
+        };
+        match raw {
+            Some(raw) => serde_json::from_str(&raw)
+                .map(Some)
+                .map_err(StorageError::SettingsJson),
+            None => Ok(None),
+        }
+    }
+
+    /// 写入设置项（value_json 序列化）；key 是主键，覆盖写不产生第二行。
+    pub fn setting_set<T: serde::Serialize>(
+        &self,
+        key: &str,
+        value: &T,
+        now_ms: i64,
+    ) -> Result<(), StorageError> {
+        let value_json = serde_json::to_string(value).map_err(StorageError::SettingsJson)?;
+        let connection = self.lock()?;
+        connection
+            .execute(
+                "INSERT INTO settings (key, value_json, updated_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json,
+                                              updated_at = excluded.updated_at",
+                params![key, value_json, now_ms],
+            )
+            .map_err(StorageError::SettingsWrite)?;
+        Ok(())
+    }
+
+    /// 删除设置项；返回是否删掉了既有行（清除未配置的项不报错）。
+    pub fn setting_delete(&self, key: &str) -> Result<bool, StorageError> {
+        let connection = self.lock()?;
+        let changed = connection
+            .execute("DELETE FROM settings WHERE key = ?1", [key])
+            .map_err(StorageError::SettingsWrite)?;
+        Ok(changed > 0)
     }
 
     /// 本地录入：同一事务内完成双轨去重 + 条目/来源/队列写入（#28）。
@@ -464,6 +523,24 @@ impl Database {
             entries,
             next_cursor,
         })
+    }
+
+    /// 测试观察口：设置表的全部键值（断言密钥明文永远不会出现在 DB 里）。
+    #[cfg(test)]
+    pub(crate) fn settings_snapshot(&self) -> Vec<(String, String)> {
+        let Ok(connection) = self.lock() else {
+            return Vec::new();
+        };
+        let Ok(mut statement) = connection.prepare("SELECT key, value_json FROM settings") else {
+            return Vec::new();
+        };
+        let rows = statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        });
+        match rows {
+            Ok(rows) => rows.filter_map(Result::ok).collect(),
+            Err(_) => Vec::new(),
+        }
     }
 
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>, StorageError> {
@@ -1008,6 +1085,51 @@ mod tests {
             .unwrap();
         assert!(past_end.entries.is_empty());
         assert_eq!(past_end.next_cursor, None);
+    }
+
+    #[test]
+    fn settings_round_trip_through_json_and_delete() {
+        let db = Database::open_in_memory().unwrap();
+        assert_eq!(
+            db.setting_get::<String>("classifier.api_key_ref").unwrap(),
+            None
+        );
+
+        db.setting_set(
+            "classifier.api_key_ref",
+            &"keychain://aetherhud/classifier.api_key".to_string(),
+            1_000,
+        )
+        .unwrap();
+        assert_eq!(
+            db.setting_get::<String>("classifier.api_key_ref")
+                .unwrap()
+                .as_deref(),
+            Some("keychain://aetherhud/classifier.api_key")
+        );
+
+        // 覆盖写仍只有一行（key 是主键）。
+        db.setting_set(
+            "classifier.api_key_ref",
+            &"keychain://aetherhud/classifier.api_key".to_string(),
+            2_000,
+        )
+        .unwrap();
+        assert_eq!(
+            scalar_i64(
+                &db,
+                "SELECT count(*) FROM settings WHERE key = ?1",
+                ["classifier.api_key_ref"]
+            ),
+            1
+        );
+
+        assert!(db.setting_delete("classifier.api_key_ref").unwrap());
+        assert_eq!(
+            db.setting_get::<String>("classifier.api_key_ref").unwrap(),
+            None
+        );
+        assert!(!db.setting_delete("classifier.api_key_ref").unwrap());
     }
 
     #[test]

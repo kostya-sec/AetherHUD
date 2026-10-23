@@ -8,6 +8,11 @@
 *secret*
 *.token
 secrets.*
+# 例外：源码文件不是密钥。领域源码（如 crates/aether-core/src/credentials.rs、
+# src/components/HudCredentialsPane.tsx）必须入库，不能被上面的通配吞掉。
+!**/*.rs
+!**/*.ts
+!**/*.tsx
 
 # ===== Rust / Tauri =====
 /target/

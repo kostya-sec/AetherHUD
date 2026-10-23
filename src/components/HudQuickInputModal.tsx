@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { isIngestShortcut, type QuickInputState } from "../hud-model";
-import { hudSurfaceStyle } from "./hudSurface";
+import { modalSurfaceStyle } from "./hudSurface";
 
 interface HudQuickInputModalProps {
   quickInput: QuickInputState;
@@ -69,7 +69,7 @@ export function HudQuickInputModal({
         data-hud-hitbox
         data-hud-quick-input
         className="pixel-box w-full max-w-xl rounded-xl border border-stone-700/90 p-4"
-        style={hudSurfaceStyle(Math.min(hudOpacity + 0.03, 1))}
+        style={modalSurfaceStyle(hudOpacity)}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between gap-3">

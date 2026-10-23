@@ -98,18 +98,40 @@ fn temp_path(path: &Path) -> PathBuf {
     }
 }
 
+/// 出站请求方法：v1 只有凭证验证用 POST（飞书 tenant_access_token），抓取链全为 GET。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HttpMethod {
+    Get,
+    Post,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpRequest {
+    pub method: HttpMethod,
     pub url: String,
     pub headers: Vec<(String, String)>,
+    pub body: Option<String>,
     pub timeout_ms: u64,
 }
 
 impl HttpRequest {
     pub fn get(url: impl Into<String>) -> Self {
         Self {
+            method: HttpMethod::Get,
             url: url.into(),
             headers: Vec::new(),
+            body: None,
+            timeout_ms: 20_000,
+        }
+    }
+
+    /// JSON/表单正文由调用方准备好；适配器只负责原样发送。
+    pub fn post(url: impl Into<String>, body: impl Into<String>) -> Self {
+        Self {
+            method: HttpMethod::Post,
+            url: url.into(),
+            headers: Vec::new(),
+            body: Some(body.into()),
             timeout_ms: 20_000,
         }
     }
@@ -143,9 +165,9 @@ pub enum HttpError {
 pub type HttpFuture<'a> =
     Pin<Box<dyn Future<Output = Result<HttpResponse, HttpError>> + Send + 'a>>;
 
-/// 抓取/同步等出站 HTTP 的唯一边界（#27 只建立适配器，抓取链在后续票接入）。
+/// 抓取/同步/凭证验证等出站 HTTP 的唯一边界（#27 建立；#29 增加 POST）。
 pub trait HttpTransport: Send + Sync {
-    fn get<'a>(&'a self, request: HttpRequest) -> HttpFuture<'a>;
+    fn request<'a>(&'a self, request: HttpRequest) -> HttpFuture<'a>;
 }
 
 #[derive(Debug, Clone, Default)]
@@ -162,12 +184,16 @@ impl ReqwestTransport {
 }
 
 impl HttpTransport for ReqwestTransport {
-    fn get<'a>(&'a self, request: HttpRequest) -> HttpFuture<'a> {
+    fn request<'a>(&'a self, request: HttpRequest) -> HttpFuture<'a> {
         Box::pin(async move {
-            let mut builder = self
-                .client
-                .get(&request.url)
-                .timeout(Duration::from_millis(request.timeout_ms.max(1)));
+            let mut builder = match request.method {
+                HttpMethod::Get => self.client.get(&request.url),
+                HttpMethod::Post => self.client.post(&request.url),
+            }
+            .timeout(Duration::from_millis(request.timeout_ms.max(1)));
+            if let Some(body) = &request.body {
+                builder = builder.body(body.clone());
+            }
             for (name, value) in &request.headers {
                 builder = builder.header(name, value);
             }
