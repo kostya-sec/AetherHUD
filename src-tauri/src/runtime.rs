@@ -121,11 +121,11 @@ impl CoreState {
             .map_err(|error| error.to_string())
     }
 
-    /// 活动 LLM 供应商配置（#45 前置）：预设 / base URL / 模型 / 消息格式。
+    /// 活动 LLM 供应商配置（#45 前置）：预设 / base URL / 模型 / 消息类型。
     ///
     /// 缺失或坏值逐键回落到预设默认值，设置页永远能打开。
     pub fn provider_profile(&self) -> Result<ProviderProfile, String> {
-        ProviderProfile::load(self.core()?.database()).map_err(|error| error.to_string())
+        Ok(ProviderProfile::load(self.core()?.database()))
     }
 
     /// 保存活动供应商配置：非秘密，逐键写 settings；校验失败返回可读原因。

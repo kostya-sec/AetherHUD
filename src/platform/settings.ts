@@ -105,14 +105,6 @@ export async function loadCredentialStatuses(dispatch: Dispatch): Promise<void> 
 }
 
 /**
- * 凭证提示里的展示名：分类器 Key 的 core 固定 label 是「百炼 API Key」，换成
- * 其他供应商后与卡片里随活动供应商变化的展示名不一致，提示改用供应商无关的名字。
- */
-function credentialMessageLabel(kind: CredentialKind, status: CredentialStatus): string {
-  return kind === "classifierApiKey" ? "分类器 API Key" : status.label;
-}
-
-/**
  * 保存一项凭证：密钥经 IPC 进系统钥匙串，界面只拿回状态与引用。
  * 返回 true 表示保存成功（调用方据此清空输入框）；失败时保留输入便于重试。
  */
@@ -135,7 +127,7 @@ export async function saveCredential(
       type: "set-credential-message",
       message: {
         tone: "ok",
-        text: `${credentialMessageLabel(kind, status)} 已保存到系统钥匙串（数据库只存引用）`,
+        text: `${status.label} 已保存到系统钥匙串（数据库只存引用）`,
       },
     });
     return true;
@@ -163,7 +155,7 @@ export async function clearCredential(
       type: "set-credential-message",
       message: {
         tone: "ok",
-        text: `${credentialMessageLabel(kind, status)} 已从系统钥匙串清除`,
+        text: `${status.label} 已从系统钥匙串清除`,
       },
     });
     return true;

@@ -22,7 +22,7 @@ import {
 const status = (overrides: Partial<CredentialStatus> = {}): CredentialStatus => ({
   kind: "classifierApiKey",
   account: "classifier.api_key",
-  label: "百炼 API Key",
+  label: "分类器 API Key",
   state: "not_configured",
   reference: "keychain://aetherhud/classifier.api_key",
   ...overrides,
@@ -186,7 +186,7 @@ describe("设置弹层（#29）", () => {
     });
     state = hudReducer(state, {
       type: "set-credential-message",
-      message: { tone: "ok", text: "百炼 API Key 已保存到系统钥匙串" },
+      message: { tone: "ok", text: "分类器 API Key 已保存到系统钥匙串" },
     });
 
     expect(selectCredentialValidation(selectSettings(state).credentials, "feishu")?.detail).toContain(

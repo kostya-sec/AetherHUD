@@ -39,7 +39,7 @@ import {
 const configured: CredentialStatus = {
   kind: "classifierApiKey",
   account: "classifier.api_key",
-  label: "百炼 API Key",
+  label: "分类器 API Key",
   state: "configured",
   reference: "keychain://aetherhud/classifier.api_key",
 };

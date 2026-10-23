@@ -43,7 +43,7 @@ Esc 的退层顺序（#17 §5.1，本票补入设置弹层）：
 | 2 | 外观与音效 | 主题色 5 套、HUD 透明度、雨幕密度、音效开关/音量 | 占位 | #46 |
 | 3 | 分类与分类器 | provider / base URL / model / prompt 版本（只读）/ 测试连接 | 占位（凭证在「凭证」区） | #45 |
 | 4 | 网络 | 代理三档（跟随系统 / 自定义 / 直连）+ 地址/账号/密码 | 占位 | #45 |
-| 5 | **凭证** | 分类器供应商卡片（预设 / 消息格式 / Base URL / 模型 / API Key 与验证同卡片）+ Jina Key、飞书 App ID / App Secret 的保存/清除/状态/验证 | **已实现** | #29 / #45 |
+| 5 | **凭证** | 分类器供应商卡片（预设 / 消息类型 / Base URL / 模型 / API Key 与验证同卡片）+ Jina Key、飞书 App ID / App Secret 的保存/清除/状态/验证 | **已实现** | #29 / #45 |
 | 6 | 摄入与同步 | webhook 路径复制/重置、端口、飞书 Base/Table/字段映射/开关/最近状态 | 占位 | #42 / #44 |
 | 7 | 标签管理 | 标签合并、别名、常驻与隐藏 | 占位 | #35 |
 | 8 | 分类管理 | 自建节点停用/恢复/改名、覆盖层导出 | 占位 | #41 |
@@ -58,16 +58,16 @@ Esc 的退层顺序（#17 §5.1，本票补入设置弹层）：
 
 凭证区第一张卡片是「分类器供应商」。按用户 2026-10-23 澄清，v1 采用**单一活动供应商 + 预设**：同一时间只有一套配置生效，不做多套配置列表；切换预设只填默认值，Key 仍共用 `classifier.api_key`，换供应商要重填 Key。
 
-凭证区从上到下依次是：**分类器供应商卡片**（预设 / 消息格式 / Base URL / 模型 / API Key / 保存与验证同卡片）→ Jina Reader 分组 → 飞书开放平台分组 → YouTube 占位行与说明。分类器 API Key 不再单独成组（#45 修复：用户反馈供应商卡片里找不到填 Key 的地方），页面上只有一行 `classifierApiKey`。
+凭证区从上到下依次是：**分类器供应商卡片**（预设 / 消息类型 / Base URL / 模型 / API Key / 保存与验证同卡片）→ Jina Reader 分组 → 飞书开放平台分组 → YouTube 占位行与说明。分类器 API Key 不再单独成组（#45 修复：用户反馈供应商卡片里找不到填 Key 的地方），页面上只有一行 `classifierApiKey`。
 
-| 预设（serde 值） | 默认 Base URL | 默认模型 | 默认消息格式 |
+| 预设（serde 值） | 默认 Base URL | 默认模型 | 默认消息类型 |
 | --- | --- | --- | --- |
 | 百炼（`bailian`，默认） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-flash` | `chat_completions` |
 | OpenAI（`openai`） | `https://api.openai.com/v1` | `gpt-4o-mini` | `chat_completions` |
 | DeepSeek（`deepseek`） | `https://api.deepseek.com/v1` | `deepseek-chat` | `chat_completions` |
 | 自定义（`custom`） | 空（必填） | 空（必填） | `chat_completions` |
 
-- **消息格式（message type）= API 协议**，二选一：
+- **消息类型（message type）**，二选一（决定请求体与响应解析）：
   - `chat_completions`（默认）：`POST {base}/chat/completions`，请求体 `messages[]`，读 `choices[0].message.content`；
   - `responses`：`POST {base}/responses`，请求体 `input[]`（system 也可作为首项），读顶层 `output_text` 或 `output[].content[].output_text`；usage 取 `input_tokens` / `output_tokens`。
 - settings 键（都是 value_json 字符串，**不是秘密**）：
@@ -92,7 +92,7 @@ Esc 的退层顺序（#17 §5.1，本票补入设置弹层）：
 - Keychain service 固定 `aetherhud`（`KEYCHAIN_SERVICE`）；引用形态固定 `keychain://aetherhud/<account>`。
 - YouTube Key 在凭证区显示一行**不可编辑的占位**（v1 不配置，视频元数据走 oEmbed）；代理密码（`proxy.password`）归「网络」分区、飞书 Base app_token 与字段映射归「摄入与同步」分区（后续票），凭证区只留说明。
 - 分类器 API Key 是「分类器供应商」卡片内的固定一行：密码输入 + 三态徽标 + `keychain://` 引用 + 「保存」/「清除」。保存 Key 不改供应商配置，保存供应商配置也不清除 Key。
-- 分类器 Key 行的展示名随**已保存**的活动供应商变化（百炼 / OpenAI / DeepSeek / 自定义供应商），account 与引用不变；只改了草稿未保存时，展示名仍跟随已保存供应商。
+- 分类器 Key 行的展示名随**已保存**的活动供应商变化（阿里百炼（DashScope） / OpenAI / DeepSeek / 自定义（OpenAI 兼容）），account 与引用不变；只改了草稿未保存时，展示名仍跟随已保存供应商。
 
 ### 4.3 状态
 
@@ -177,7 +177,7 @@ Esc 的退层顺序（#17 §5.1，本票补入设置弹层）：
   - 脱敏：前 4 后 4、≤8 字符整体遮蔽、错误串按已知密钥擦除；
   - 验证：百炼 200/401、自定义 base URL、Jina 200/无 Key、飞书成功/错误码/缺一半，断言请求方法、URL、Bearer/JSON body、错误可读且不含密钥。
   - 供应商配置（`aether-core::provider`）：预设默认值、默认等于百炼、非法 base URL / 空模型的可读错误、save/load 往返（含自定义与尾斜杠规范化）、坏值逐键回落、映射到 `aether-classifier` 的 `ProviderConfig`；分类器验证使用已保存的自定义 profile 的 Base URL，未配置 Base URL 时不发请求。
-  - 两种消息格式（`aether-classifier::provider`）：chat / responses 的 endpoint 与请求体结构、chat 完整 URL 原样使用、responses 顶层 `output_text` 与 `output[]` 两种解析、usage 映射、缺失文本的可读终态错误。
+  - 两种消息类型（`aether-classifier::provider`）：chat / responses 的 endpoint 与请求体结构、chat 完整 URL 原样使用、responses 顶层 `output_text` 与 `output[]` 两种解析、usage 映射、缺失文本的可读终态错误。
   - 出口 HTTP 适配器扩展为 `HttpMethod` + body（v1 唯一的 POST 是飞书 token 交换），其余抓取仍走 GET。
 - 前端（`npx vitest run`）：
   - 设置弹层默认关闭、入口行「设置」开启；十区顺序与占位状态；
@@ -192,7 +192,7 @@ Esc 的退层顺序（#17 §5.1，本票补入设置弹层）：
 ## 8. 后续票与 v1 不做
 
 - 十区其余分区的内容分别归 #45（分类器/网络）、#46（通用/外观/首启）、#42 / #44（摄入与同步）、#35（标签管理）、#41（分类管理）、#43（数据）、#47（关于与更新）。退出已在设置底部接入（本票），#46 只补通用分区其余项。
-- **#45 前置已落地**：「分类与分类器」区的 provider / base URL / model / 消息格式与「测试连接使用活动供应商」已在「凭证」区实现；#45 只剩该分区的只读展示、prompt 版本、测试连接入口迁移与网络代理。
+- **#45 前置已落地**：「分类与分类器」区的 provider / base URL / model / 消息类型与「测试连接使用活动供应商」已在「凭证」区实现；#45 只剩该分区的只读展示、prompt 版本、测试连接入口迁移与网络代理。
 - 设置页五区键盘模型（方向键/Home/End/焦点归还）归 #38；本票只用原生 Tab。
 - 设置变更即时广播前端事件（主题/透明度/音效/时区）归 #46；本票只做凭证与弹层骨架。
 - 凭证的其余 account（`youtube.api_key` 占位、`proxy.password`、`feishu.app_token`）留到 #45 / #44；本票枚举只含四个已落地凭证，YouTube 只显示占位行。

@@ -197,7 +197,7 @@ export interface MessageTypeMeta {
   readonly description: string;
 }
 
-/** 两种消息格式（API 协议）；Chat Completions 是默认。 */
+/** 两种消息类型（Chat Completions / Responses）；Chat Completions 是默认。 */
 export const MESSAGE_TYPE_OPTIONS: readonly MessageTypeMeta[] = [
   {
     id: "chat_completions",
@@ -259,7 +259,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
     label: "凭证",
     implemented: true,
     summary:
-      "分类器供应商（预设 / 消息格式 / Base URL / 模型 / API Key 同一卡片）、Jina Key、飞书 App ID / App Secret（#29 / #45）",
+      "分类器供应商（预设 / 消息类型 / Base URL / 模型 / API Key 同一卡片）、Jina Key、飞书 App ID / App Secret（#29 / #45）",
   },
   {
     id: "ingestion",

@@ -12,13 +12,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::{secret_ref, Clock, HttpRequest, HttpTransport, Keychain};
-use crate::provider::{ProviderProfile, BASE_URL_SETTING};
+use crate::provider::ProviderProfile;
 use crate::storage::{Database, StorageError};
 
-/// 默认分类器兼容端点（百炼，见 #15 §3.4）；活动值由 [`ProviderProfile`] 决定。
-pub const DEFAULT_CLASSIFIER_BASE_URL: &str = crate::provider::BAILIAN_BASE_URL;
-/// settings 里保存分类器 base URL 的键（与 [`crate::provider::BASE_URL_SETTING`] 同键）。
-pub const CLASSIFIER_BASE_URL_SETTING: &str = BASE_URL_SETTING;
 /// Jina 验证用的一次读（#15 §4）。
 pub const JINA_READ_PROBE_URL: &str = "https://r.jina.ai/https://example.com";
 /// 飞书 tenant_access_token 交换端点（#15 §4 / #5）。
@@ -103,7 +99,7 @@ impl CredentialKind {
     /// 设置页展示名（界面语言 v1 仅简体中文）。
     pub fn label(self) -> &'static str {
         match self {
-            Self::ClassifierApiKey => "百炼 API Key",
+            Self::ClassifierApiKey => "分类器 API Key",
             Self::JinaApiKey => "Jina API Key",
             Self::FeishuAppId => "飞书 App ID",
             Self::FeishuAppSecret => "飞书 App Secret",
@@ -286,10 +282,7 @@ impl<'a> CredentialService<'a> {
     /// 配置未保存时回落到百炼默认值，行为与 #29 等价；自定义供应商没填 base URL
     /// 时直接给可读提示，不发请求。
     async fn validate_classifier(&self, transport: &dyn HttpTransport) -> ValidationOutcome {
-        let profile = match ProviderProfile::load(self.database) {
-            Ok(profile) => profile,
-            Err(error) => return failure(format!("无法读取供应商配置：{error}"), &[]),
-        };
+        let profile = ProviderProfile::load(self.database);
         let provider = profile.preset.label();
         if profile.base_url.trim().is_empty() {
             return failure(
@@ -309,7 +302,7 @@ impl<'a> CredentialService<'a> {
         };
         let secrets = [key.clone()];
         let base = profile.base_url.trim_end_matches('/').to_string();
-        let url = format!("{base}/models");
+        let url = models_endpoint(&base);
         let request = HttpRequest::get(url)
             .with_header("authorization", format!("Bearer {key}"))
             .with_timeout_ms(VALIDATION_TIMEOUT_MS);
@@ -492,6 +485,17 @@ impl<'a> CredentialService<'a> {
     }
 }
 
+/// 分类器验证用的 `/models` 端点：Base URL 允许直接填完整对话端点
+/// （`…/chat/completions` 或 `…/responses`），验证时先退回服务根再拼 `/models`。
+fn models_endpoint(base_url: &str) -> String {
+    let base = base_url.trim().trim_end_matches('/');
+    let root = base
+        .strip_suffix("/chat/completions")
+        .or_else(|| base.strip_suffix("/responses"))
+        .unwrap_or(base);
+    format!("{root}/models")
+}
+
 /// 飞书 tenant_access_token 响应（只取验证需要的字段；未知字段忽略）。
 #[derive(Debug, Deserialize)]
 struct FeishuTokenResponse {
@@ -565,7 +569,7 @@ mod tests {
             statuses[0].reference,
             "keychain://aetherhud/classifier.api_key"
         );
-        assert_eq!(statuses[0].label, "百炼 API Key");
+        assert_eq!(statuses[0].label, "分类器 API Key");
     }
 
     #[test]
@@ -747,7 +751,7 @@ mod tests {
         let service = configured_service_fixture(&keychain, &database, &clock);
         let transport = FakeHttpTransport::new();
         transport.enqueue(
-            format!("{DEFAULT_CLASSIFIER_BASE_URL}/models"),
+            format!("{}/models", crate::provider::BAILIAN_BASE_URL),
             http_ok(r#"{"data":[{"id":"qwen-flash"},{"id":"qwen-max"}]}"#),
         );
 
@@ -762,7 +766,7 @@ mod tests {
         assert_eq!(requests[0].method, HttpMethod::Get);
         assert_eq!(
             requests[0].url,
-            format!("{DEFAULT_CLASSIFIER_BASE_URL}/models")
+            format!("{}/models", crate::provider::BAILIAN_BASE_URL)
         );
         assert!(requests[0].headers.iter().any(|(name, value)| {
             name.eq_ignore_ascii_case("authorization") && value == "Bearer sk-bailian-secret"
@@ -777,7 +781,7 @@ mod tests {
         let service = configured_service_fixture(&keychain, &database, &clock);
         database
             .setting_set(
-                CLASSIFIER_BASE_URL_SETTING,
+                crate::provider::BASE_URL_SETTING,
                 &"https://dashscope-intl.aliyuncs.com/compatible-mode/v1/".to_string(),
                 0,
             )
@@ -817,7 +821,7 @@ mod tests {
 
         assert!(!outcome.ok);
         assert!(
-            outcome.detail.contains("自定义供应商"),
+            outcome.detail.contains("自定义（OpenAI 兼容）"),
             "失败信息要带上供应商：{}",
             outcome.detail
         );
@@ -838,6 +842,41 @@ mod tests {
             "验证必须打活动供应商的 Base URL"
         );
         assert!(!outcome.detail.contains("sk-bailian-secret"));
+    }
+
+    #[tokio::test]
+    async fn classifier_validation_accepts_a_full_chat_endpoint_as_base_url() {
+        let keychain = MemoryKeychain::new();
+        let database = Database::open_in_memory().unwrap();
+        let clock = FakeClock::new(1_761_000_000_000);
+        let service = configured_service_fixture(&keychain, &database, &clock);
+        ProviderProfile::save(
+            &database,
+            &ProviderProfile {
+                preset: ProviderPreset::OpenAi,
+                base_url: "https://api.openai.com/v1/chat/completions".to_string(),
+                model: "gpt-4o-mini".to_string(),
+                message_type: MessageType::ChatCompletions,
+            },
+            0,
+        )
+        .unwrap();
+        let transport = FakeHttpTransport::new();
+        transport.enqueue(
+            "https://api.openai.com/v1/models",
+            http_ok(r#"{"data":[]}"#),
+        );
+
+        let outcome = service
+            .validate(ValidationTarget::Classifier, &transport)
+            .await;
+
+        assert!(outcome.ok, "{}", outcome.detail);
+        assert_eq!(
+            transport.requests()[0].url,
+            "https://api.openai.com/v1/models",
+            "完整对话端点应退回服务根再拼 /models"
+        );
     }
 
     #[tokio::test]
@@ -875,7 +914,7 @@ mod tests {
         let service = configured_service_fixture(&keychain, &database, &clock);
         let transport = FakeHttpTransport::new();
         transport.enqueue(
-            format!("{DEFAULT_CLASSIFIER_BASE_URL}/models"),
+            format!("{}/models", crate::provider::BAILIAN_BASE_URL),
             http_status(401),
         );
 

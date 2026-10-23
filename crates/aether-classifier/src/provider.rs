@@ -1,4 +1,4 @@
-//! OpenAI 兼容 provider：Chat Completions 与 Responses 两种消息格式（默认阿里百炼
+//! OpenAI 兼容 provider：Chat Completions 与 Responses 两种消息类型（默认阿里百炼
 //! DashScope，见 #15 / #45 前置）。
 //!
 //! 单次调用只做一次 HTTP；重试由 [`crate::engine::ClassificationEngine`] 按 #11 策略驱动。
@@ -11,7 +11,7 @@ use serde_json::{Map, Value};
 use crate::prompt::Message;
 use crate::retry::ErrorClass;
 
-/// 消息格式（API 协议）：决定请求体形状与响应解析路径。
+/// 消息类型（Message Type）：决定请求体形状与响应解析路径。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageType {
@@ -29,6 +29,15 @@ impl MessageType {
             Self::Responses => "responses",
         }
     }
+
+    /// 宽松解析 settings/CLI 里的字符串；未知值返回 None，由调用方回落到默认。
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "chat_completions" | "chat-completions" | "chat" => Some(Self::ChatCompletions),
+            "responses" | "response" => Some(Self::Responses),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -38,7 +47,7 @@ pub struct ProviderConfig {
     pub base_url: String,
     pub model: String,
     pub api_key: String,
-    /// 消息格式（默认 Chat Completions，向后兼容既有调用点）。
+    /// 消息类型（默认 Chat Completions，向后兼容既有调用点）。
     pub message_type: MessageType,
     pub temperature: f64,
     pub max_tokens: u32,

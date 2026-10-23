@@ -715,7 +715,7 @@ fn build_provider_config(
         base_url,
         model,
         api_key,
-        // 评测 CLI 暂不暴露消息格式开关：默认 Chat Completions，保持既有行为。
+        // 评测 CLI 暂不暴露消息类型开关：默认 Chat Completions，保持既有行为。
         message_type: MessageType::ChatCompletions,
         temperature: args.temperature.unwrap_or(0.0),
         max_tokens: args.max_tokens.unwrap_or(400),

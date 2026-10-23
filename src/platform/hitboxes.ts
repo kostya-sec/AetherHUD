@@ -122,13 +122,38 @@ function subscribeLayoutSignals(onChange: () => void): () => void {
 
   // Only the HUD container's own entrance animation matters; a per-control
   // transitionend (hover colors) never moves a hitbox.
+  // The HUD root may not be committed by React yet when this runs; bind the
+  // ResizeObserver lazily on the first signal (and once on the next task) so it ends
+  // up on [data-hud-module] rather than falling back to <body> forever.
+  let observed: Element | null = null;
+  let observer: ResizeObserver | null = null;
+  const ensureObserved = (): void => {
+    if (!observer) return;
+    const target = document.querySelector("[data-hud-module]") ?? document.body;
+    if (!target || target === observed) return;
+    observer.disconnect();
+    observer.observe(target);
+    observed = target;
+  };
+  if (typeof ResizeObserver !== "undefined") {
+    observer = new ResizeObserver(() => {
+      ensureObserved();
+      onChange();
+    });
+    ensureObserved();
+    // A zero-delay task runs even when the hidden webview suspends animation frames.
+    setTimeout(ensureObserved, 0);
+  }
+
   const handleAnimation = (event: Event): void => {
     const target = event.target;
     if (target instanceof Element && target.hasAttribute("data-hud-module")) {
+      ensureObserved();
       onChange();
     }
   };
   const handleViewport = (): void => {
+    ensureObserved();
     onChange();
   };
 
@@ -136,15 +161,6 @@ function subscribeLayoutSignals(onChange: () => void): () => void {
   const VIEWPORT_EVENTS = ["resize", "visibilitychange"] as const;
   for (const type of MODULE_EVENTS) window.addEventListener(type, handleAnimation);
   for (const type of VIEWPORT_EVENTS) window.addEventListener(type, handleViewport);
-
-  // Content-box changes that never fire a window resize (late font/stylesheet, a
-  // notice bar inserting itself) also invalidate the measured rectangles.
-  let observer: ResizeObserver | null = null;
-  const module = document.querySelector("[data-hud-module]") ?? document.body;
-  if (module && typeof ResizeObserver !== "undefined") {
-    observer = new ResizeObserver(handleViewport);
-    observer.observe(module);
-  }
 
   return () => {
     for (const type of MODULE_EVENTS) window.removeEventListener(type, handleAnimation);

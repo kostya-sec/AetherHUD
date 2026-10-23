@@ -1,10 +1,10 @@
-//! LLM 供应商配置（#45 前置）：单一活动供应商 + 预设 + 消息格式。
+//! LLM 供应商配置（#45 前置）：单一活动供应商 + 预设 + 消息类型。
 //!
 //! 2026-10-23 用户澄清后定下的三条边界：
 //! 1. **单一活动供应商**：同一时间只有一套配置生效；切换预设要重填 Key（Key 仍存
 //!    Keychain account `classifier.api_key`），不做多套配置列表。预设只提供默认
 //!    base URL / model / message type，用户可直接改；「自定义」要求自己填。
-//! 2. **非秘密**：base URL / model / 消息格式是普通 settings（value_json），密钥本
+//! 2. **非秘密**：base URL / model / 消息类型是普通 settings（value_json），密钥本
 //!    体永远只在系统钥匙串，库里最多留 `keychain://aetherhud/<account>` 引用。
 //! 3. **坏值不阻塞界面**：settings 里存了无法解析的值（旧版本、手工改坏）时逐键回
 //!    落到预设默认值，设置页照常打开。
@@ -25,7 +25,7 @@ pub const PROVIDER_SETTING: &str = "classifier.provider";
 pub const BASE_URL_SETTING: &str = "classifier.base_url";
 /// settings 键：模型 ID。
 pub const MODEL_SETTING: &str = "classifier.model";
-/// settings 键：消息格式（`chat_completions` / `responses`）。
+/// settings 键：消息类型（`chat_completions` / `responses`）。
 pub const MESSAGE_TYPE_SETTING: &str = "classifier.message_type";
 
 /// 百炼（DashScope）OpenAI 兼容端点（v1 默认供应商）。
@@ -40,37 +40,10 @@ pub const MAX_BASE_URL_CHARS: usize = 2048;
 /// 模型 ID 长度上限（够长于现有任何模型名）。
 pub const MAX_MODEL_CHARS: usize = 256;
 
-/// 消息格式（API 协议）：决定请求体形状与响应解析路径。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum MessageType {
-    /// POST `{base}/chat/completions`，body.messages[]，读 choices[0].message.content。
-    #[default]
-    ChatCompletions,
-    /// POST `{base}/responses`，body.input[]，读 output_text / output[].content[]。
-    Responses,
-}
-
-impl MessageType {
-    /// 界面与控制台展示顺序（Chat Completions 在前，它是默认）。
-    pub const ALL: [MessageType; 2] = [Self::ChatCompletions, Self::Responses];
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::ChatCompletions => "chat_completions",
-            Self::Responses => "responses",
-        }
-    }
-
-    /// 宽松解析：不认识的值返回 None，由调用方回落到预设默认值。
-    pub fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "chat_completions" | "chat-completions" | "chat" => Some(Self::ChatCompletions),
-            "responses" | "response" => Some(Self::Responses),
-            _ => None,
-        }
-    }
-}
+/// 消息类型（Message Type）：与分类路径共用同一个枚举，避免两处定义漂移。
+///
+/// 设置层需要 `as_str` / `parse`，由 aether-classifier 提供（它是唯一分类路径）。
+pub use aether_classifier::provider::MessageType;
 
 /// 供应商预设：只提供默认值，不锁定用户改动。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -89,10 +62,6 @@ pub enum ProviderPreset {
 }
 
 impl ProviderPreset {
-    /// 界面下拉顺序（百炼 → OpenAI → DeepSeek → 自定义）。
-    pub const ALL: [ProviderPreset; 4] =
-        [Self::Bailian, Self::OpenAi, Self::DeepSeek, Self::Custom];
-
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Bailian => "bailian",
@@ -142,16 +111,17 @@ impl ProviderPreset {
 
     /// 界面与错误串里的供应商名（不写实现细节）。
     pub const fn label(self) -> &'static str {
+        // 展示名与前端 PROVIDER_PRESETS 保持一致（跨层漂移由两侧测试分别锁定）。
         match self {
-            Self::Bailian => "百炼",
+            Self::Bailian => "阿里百炼（DashScope）",
             Self::OpenAi => "OpenAI",
             Self::DeepSeek => "DeepSeek",
-            Self::Custom => "自定义供应商",
+            Self::Custom => "自定义（OpenAI 兼容）",
         }
     }
 }
 
-/// 活动供应商配置：预设 + 可改的 base URL / model / 消息格式（前端同形，camelCase）。
+/// 活动供应商配置：预设 + 可改的 base URL / model / 消息类型（前端同形，camelCase）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderProfile {
@@ -239,11 +209,10 @@ impl ProviderProfile {
         Ok(profile)
     }
 
-    /// 读取活动配置；缺失或坏值逐键回落到预设默认值（不返回 Err）。
+    /// 读取活动配置；缺失或坏值逐键回落到预设默认值（设置页永远能打开）。
     ///
-    /// 返回 `Result` 是为了给后续「设置表迁移失败要提示」留接缝；当前实现不会因
-    /// 坏值失败——设置页永远能打开。
-    pub fn load(database: &Database) -> Result<Self, ProviderProfileError> {
+    /// 读设置出错也按「没配过」处理：配置层不阻塞 UI；写失败由 [`Self::save`] 报错。
+    pub fn load(database: &Database) -> Self {
         let preset = read_setting(database, PROVIDER_SETTING)
             .and_then(|value| ProviderPreset::parse(&value))
             .unwrap_or_default();
@@ -269,12 +238,12 @@ impl ProviderProfile {
             .and_then(|value| MessageType::parse(&value))
             .unwrap_or_else(|| preset.default_message_type());
 
-        Ok(Self {
+        Self {
             preset,
             base_url,
             model,
             message_type,
-        })
+        }
     }
 
     /// core → aether-classifier 的接缝：worker / eval 都从这里拿 provider 配置。
@@ -292,12 +261,7 @@ impl ProviderProfile {
             base_url: profile.base_url,
             model: profile.model,
             api_key,
-            message_type: match profile.message_type {
-                MessageType::ChatCompletions => {
-                    aether_classifier::provider::MessageType::ChatCompletions
-                }
-                MessageType::Responses => aether_classifier::provider::MessageType::Responses,
-            },
+            message_type: profile.message_type,
             temperature: 0.0,
             max_tokens: 400,
             request_timeout: Duration::from_secs(30),
@@ -378,7 +342,12 @@ mod tests {
         assert!(custom.base_url.is_empty());
         assert!(custom.model.is_empty());
 
-        for preset in ProviderPreset::ALL {
+        for preset in [
+            ProviderPreset::Bailian,
+            ProviderPreset::OpenAi,
+            ProviderPreset::DeepSeek,
+            ProviderPreset::Custom,
+        ] {
             assert_eq!(
                 ProviderProfile::from_preset(preset).message_type,
                 MessageType::ChatCompletions,
@@ -443,7 +412,7 @@ mod tests {
 
         assert_eq!(saved.base_url, "https://gateway.example.com/openai/v1");
         assert_eq!(saved.model, "my-model");
-        let loaded = ProviderProfile::load(&database).unwrap();
+        let loaded = ProviderProfile::load(&database);
         assert_eq!(loaded, saved);
 
         let snapshot = database.settings_snapshot();
@@ -473,7 +442,7 @@ mod tests {
             .setting_set(MESSAGE_TYPE_SETTING, &"grpc".to_string(), 0)
             .unwrap();
 
-        let loaded = ProviderProfile::load(&database).unwrap();
+        let loaded = ProviderProfile::load(&database);
 
         assert_eq!(loaded, ProviderProfile::default());
     }
@@ -485,7 +454,7 @@ mod tests {
             .setting_set(PROVIDER_SETTING, &"custom".to_string(), 0)
             .unwrap();
 
-        let loaded = ProviderProfile::load(&database).unwrap();
+        let loaded = ProviderProfile::load(&database);
 
         assert_eq!(loaded.preset, ProviderPreset::Custom);
         assert!(loaded.base_url.is_empty());
@@ -496,10 +465,7 @@ mod tests {
     #[test]
     fn missing_settings_load_the_bailian_default() {
         let database = fresh_database();
-        assert_eq!(
-            ProviderProfile::load(&database).unwrap(),
-            ProviderProfile::default()
-        );
+        assert_eq!(ProviderProfile::load(&database), ProviderProfile::default());
     }
 
     #[test]

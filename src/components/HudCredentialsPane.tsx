@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   CREDENTIAL_KINDS,
   MESSAGE_TYPE_OPTIONS,
@@ -24,7 +24,7 @@ interface HudCredentialsPaneProps {
   onSaveCredential: (kind: CredentialKind, secret: string) => Promise<boolean>;
   onClearCredential: (kind: CredentialKind) => Promise<boolean>;
   onValidate: (target: ValidationTarget) => Promise<void>;
-  /** 保存活动供应商配置（base URL / model / 消息格式）；返回 true = 保存成功。 */
+  /** 保存活动供应商配置（base URL / model / 消息类型）；返回 true = 保存成功。 */
   onSaveProviderProfile: (profile: ProviderProfile) => Promise<boolean>;
 }
 
@@ -47,10 +47,33 @@ export function HudCredentialsPane({
   const [providerDraft, setProviderDraft] = useState<ProviderProfile>(() =>
     credentials.profile ?? providerProfileDraft("bailian"),
   );
-  // 平台层读到（或保存回读）配置后同步草稿；未保存时保留用户正在编辑的内容。
+  // 平台层读到（或保存回读）配置后同步草稿：用户已编辑过的草稿不被迟到的读取覆盖，
+  // 只有「未编辑」或「保存成功后回读」时才接受服务端值。
+  const userEditedProviderDraft = useRef(false);
+  const savedProfileRef = useRef<ProviderProfile | null>(credentials.profile);
   useEffect(() => {
-    if (credentials.profile) setProviderDraft(credentials.profile);
+    const next = credentials.profile;
+    if (!next) return;
+    const previous = savedProfileRef.current;
+    savedProfileRef.current = next;
+    setProviderDraft((current) => {
+      const untouched = previous === null || providerProfilesEqual(current, previous);
+      if (userEditedProviderDraft.current && !untouched) return current;
+      userEditedProviderDraft.current = false;
+      return next;
+    });
   }, [credentials.profile]);
+
+  const changeProviderDraft = (profile: ProviderProfile) => {
+    userEditedProviderDraft.current = true;
+    setProviderDraft(profile);
+  };
+
+  const saveProviderDraft = async (): Promise<boolean> => {
+    const saved = await onSaveProviderProfile(providerDraft);
+    if (saved) userEditedProviderDraft.current = false;
+    return saved;
+  };
 
   const statusByKind = new Map(credentials.statuses.map((status) => [status.kind, status]));
   const rows = CREDENTIAL_KINDS.map((kind) => statusByKind.get(kind)).filter(
@@ -112,8 +135,8 @@ export function HudCredentialsPane({
         savedProfile={savedProfile}
         busy={credentials.profileBusy}
         message={credentials.profileMessage}
-        onChange={setProviderDraft}
-        onSave={() => void onSaveProviderProfile(providerDraft)}
+        onChange={changeProviderDraft}
+        onSave={() => void saveProviderDraft()}
         keyStatus={statusByKind.get("classifierApiKey") ?? null}
         keyLoading={credentials.loading}
         keyLabel={`${savedPreset.label} API Key`}
@@ -197,7 +220,7 @@ const PROVIDER_FIELD_CLASS =
   "rounded border border-stone-700/80 bg-stone-950/60 px-2 py-1 font-mono text-[11px] text-stone-100 outline-none placeholder:text-stone-600 focus:border-amber-500/80";
 
 /**
- * 「分类器供应商」卡片（#45 前置 / #45 修复）：预设 + 消息格式 + Base URL + 模型，
+ * 「分类器供应商」卡片（#45 前置 / #45 修复）：预设 + 消息类型 + Base URL + 模型，
  * 以及同一区块里的 API Key 行（保存到钥匙串 / 清除）与「验证连接」。
  *
  * 单一活动供应商：切换预设只填默认值，Key 仍共用 `classifier.api_key`（换供应商
@@ -282,7 +305,7 @@ function ProviderCard({
         </label>
 
         <label className="flex min-w-0 flex-col gap-1 font-mono text-[10px] text-stone-400">
-          消息格式
+          消息类型
           <select
             data-hud-hitbox
             data-provider-message-type
@@ -290,7 +313,7 @@ function ProviderCard({
             onChange={(event) =>
               onChange({ ...draft, messageType: event.target.value as MessageType })
             }
-            aria-label="消息格式"
+            aria-label="消息类型"
             className={PROVIDER_FIELD_CLASS}
           >
             {MESSAGE_TYPE_OPTIONS.map((option) => (
@@ -343,6 +366,7 @@ function ProviderCard({
           <CredentialRow
             status={keyStatus}
             label={keyLabel}
+            submitOnEnter
             draft={keyDraft}
             busy={keyBusy}
             onDraftChange={onKeyDraftChange}
@@ -491,6 +515,8 @@ interface CredentialRowProps {
   status: CredentialStatus;
   /** 界面展示名覆盖（分类器 Key 随活动供应商改名；account 仍固定）。 */
   label?: string;
+  /** 回车即保存（仅分类器供应商卡片内的 Key 行启用；其余行靠按钮）。 */
+  submitOnEnter?: boolean;
   draft: string;
   busy: boolean;
   onDraftChange: (value: string) => void;
@@ -501,6 +527,7 @@ interface CredentialRowProps {
 function CredentialRow({
   status,
   label,
+  submitOnEnter = false,
   draft,
   busy,
   onDraftChange,
@@ -541,7 +568,8 @@ function CredentialRow({
           data-credential-input={status.kind}
           onChange={(event) => onDraftChange(event.target.value)}
           onKeyDown={(event) => {
-            // 输入后回车等同点「保存」；输入法组合中的回车不提交，忙碌/空值直接忽略。
+            // 分类器 Key 行支持回车保存；输入法组合中的回车不提交，忙碌/空值直接忽略。
+            if (!submitOnEnter) return;
             if (event.nativeEvent.isComposing) return;
             if (event.key !== "Enter" || busy || !draft.trim()) return;
             event.preventDefault();

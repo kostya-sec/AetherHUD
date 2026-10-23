@@ -45,18 +45,6 @@ pub fn request_dismiss(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn set_hit_boxes(app: AppHandle, rects: Vec<CssRect>) -> Result<(), String> {
     let hud = hud(&app)?;
-    // 点击穿透的命中区由前端在窗口上屏/布局变化后整体替换；debug 版留一行轨迹，
-    // 便于真机排查「窗口隐藏时量到的矩形」（#29 回归）。
-    if cfg!(debug_assertions) {
-        let window = app.get_webview_window("main");
-        eprintln!(
-            "[aetherhud] hitboxes n={} first={:?} outer={:?} scale={:?}",
-            rects.len(),
-            rects.first(),
-            window.as_ref().and_then(|w| w.outer_position().ok()),
-            window.as_ref().and_then(|w| w.scale_factor().ok()),
-        );
-    }
     hud.set_hit_boxes(
         rects
             .into_iter()

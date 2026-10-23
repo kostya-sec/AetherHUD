@@ -19,7 +19,7 @@ interface HudSettingsModalProps {
   onSaveCredential: (kind: CredentialKind, secret: string) => Promise<boolean>;
   onClearCredential: (kind: CredentialKind) => Promise<boolean>;
   onValidate: (target: ValidationTarget) => Promise<void>;
-  /** 保存活动 LLM 供应商配置（base URL / model / 消息格式）。 */
+  /** 保存活动 LLM 供应商配置（base URL / model / 消息类型）。 */
   onSaveProviderProfile: (profile: ProviderProfile) => Promise<boolean>;
   onQuit: () => void;
 }

@@ -149,7 +149,7 @@ export interface CredentialStatus {
 /** LLM 供应商预设（与 aether-core::provider::ProviderPreset 同形）。 */
 export type ProviderPreset = "bailian" | "openai" | "deepseek" | "custom";
 
-/** 消息格式 / API 协议（与 aether-core::provider::MessageType 同形）。 */
+/** 消息类型（Message Type，与 aether-classifier::provider::MessageType 同形）。 */
 export type MessageType = "chat_completions" | "responses";
 
 /** 活动供应商配置（与 aether-core::provider::ProviderProfile 同形，camelCase）。 */
