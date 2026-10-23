@@ -22,16 +22,17 @@ const plainKey = (key: string, overrides: Partial<KeyDownLike> = {}): KeyDownLik
 });
 
 describe("HUD 默认态（S0）", () => {
-  it("唤出后的默认态展开搜索框、隐藏搜索球，并请求一次搜索框聚焦", () => {
+  it("默认态为球列 + 搜索框收起，且不请求聚焦", () => {
     const state = createDefaultHudState();
 
     expect(state.view).toBe("default");
     expect(state.phase).toBe("visible");
-    expect(selectSearchExpanded(state)).toBe(true);
-    expect(selectSearchOrbVisible(state)).toBe(false);
+    expect(selectSearchExpanded(state)).toBe(false);
+    expect(selectSearchOrbVisible(state)).toBe(true);
     expect(selectSearchQuery(state)).toBe("");
     expect(selectSearchFocusRequest(state)).toBe(0);
     expect(selectVisibleBallSlots(state).map((slot) => slot.kind)).toEqual([
+      "search",
       "l3-filter",
       "l1",
       "l1",
@@ -41,51 +42,47 @@ describe("HUD 默认态（S0）", () => {
       "quick-add",
       "settings",
     ]);
+    expect(selectVisibleBallSlots(state)).toHaveLength(BALL_SLOTS.length);
   });
 
-  it("鼠标折叠搜索框后，球列顶部出现搜索球", () => {
-    const collapsed = hudReducer(createDefaultHudState(), { type: "collapse-search" });
-    const visible = selectVisibleBallSlots(collapsed);
-
-    expect(selectSearchExpanded(collapsed)).toBe(false);
-    expect(selectSearchOrbVisible(collapsed)).toBe(true);
-    expect(visible[0]?.kind).toBe("search");
-    expect(visible).toHaveLength(BALL_SLOTS.length);
-  });
-
-  it("重新展开搜索框会请求一次搜索框聚焦", () => {
-    const collapsed = hudReducer(createDefaultHudState(), { type: "collapse-search" });
-    const expanded = hudReducer(collapsed, { type: "expand-search" });
-
-    expect(selectSearchExpanded(expanded)).toBe(true);
-    expect(selectSearchFocusRequest(collapsed)).toBe(0);
-    expect(selectSearchFocusRequest(expanded)).toBe(
-      selectSearchFocusRequest(collapsed) + 1,
-    );
-  });
-
-  it("唤出重置到默认态：清空查询、重新展开搜索框并聚焦（#16 K1）", () => {
+  it("唤出重置到默认态：清空查询、收起搜索框，且不请求聚焦", () => {
     let state = createDefaultHudState();
-    state = hudReducer(state, { type: "set-query", query: "Rust" });
-    state = hudReducer(state, { type: "collapse-search" });
     state = hudReducer(state, { type: "expand-search" });
+    state = hudReducer(state, { type: "set-query", query: "Rust" });
+    expect(selectSearchExpanded(state)).toBe(true);
     expect(selectSearchFocusRequest(state)).toBe(1);
 
     const summoned = hudReducer(state, { type: "summon" });
 
     expect(selectSearchQuery(summoned)).toBe("");
-    expect(selectSearchExpanded(summoned)).toBe(true);
-    expect(selectSearchFocusRequest(summoned)).toBe(2);
+    expect(selectSearchExpanded(summoned)).toBe(false);
+    expect(selectSearchFocusRequest(summoned)).toBe(0);
+    expect(selectSearchOrbVisible(summoned)).toBe(true);
     expect(selectHudPhase(summoned)).toBe("visible");
   });
 
-  it("底部键位提示随焦点区变化：搜索框与球列", () => {
-    const searchState = createDefaultHudState();
-    const ballState = hudReducer(searchState, { type: "collapse-search" });
+  it("点击搜索球展开并聚焦；折叠后再展开会再次请求聚焦", () => {
+    const expanded = hudReducer(createDefaultHudState(), { type: "expand-search" });
+    expect(selectSearchExpanded(expanded)).toBe(true);
+    expect(selectSearchOrbVisible(expanded)).toBe(false);
+    expect(selectSearchFocusRequest(expanded)).toBe(1);
+    expect(selectVisibleBallSlots(expanded)[0]?.kind).not.toBe("search");
 
-    expect(selectKeyHints(searchState).map((hint) => hint.label)).toContain("进结果");
+    const collapsed = hudReducer(expanded, { type: "collapse-search" });
+    expect(selectSearchOrbVisible(collapsed)).toBe(true);
+
+    const reExpanded = hudReducer(collapsed, { type: "expand-search" });
+    expect(selectSearchExpanded(reExpanded)).toBe(true);
+    expect(selectSearchFocusRequest(reExpanded)).toBe(2);
+  });
+
+  it("底部键位提示随焦点区变化：默认球列、展开后搜索框", () => {
+    const ballState = createDefaultHudState();
     expect(selectKeyHints(ballState).map((hint) => hint.label)).toContain("选择");
     expect(selectKeyHints(ballState).flatMap((hint) => hint.keys)).toContain("Esc");
+
+    const searchState = hudReducer(ballState, { type: "expand-search" });
+    expect(selectKeyHints(searchState).map((hint) => hint.label)).toContain("进结果");
   });
 });
 
@@ -102,8 +99,7 @@ describe("HUD 显隐阶段", () => {
   });
 
   it("收起期间忽略展开/折叠/输入命令，避免动画中改界面", () => {
-    let state = hudReducer(createDefaultHudState(), { type: "collapse-search" });
-    state = hudReducer(state, { type: "dismiss-start" });
+    const state = hudReducer(createDefaultHudState(), { type: "dismiss-start" });
 
     expect(hudReducer(state, { type: "expand-search" })).toBe(state);
     expect(hudReducer(state, { type: "collapse-search" })).toBe(state);
@@ -112,7 +108,8 @@ describe("HUD 显隐阶段", () => {
   });
 
   it("收起不清空界面内容，下一次唤出才重置到 S0", () => {
-    let state = hudReducer(createDefaultHudState(), { type: "set-query", query: "rust" });
+    let state = hudReducer(createDefaultHudState(), { type: "expand-search" });
+    state = hudReducer(state, { type: "set-query", query: "rust" });
     state = hudReducer(state, { type: "dismiss-start" });
 
     expect(selectSearchQuery(state)).toBe("rust");

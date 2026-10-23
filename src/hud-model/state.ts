@@ -2,19 +2,22 @@ import { BALL_SLOTS } from "./constants";
 import type { HudCommand, HudState, HudStore } from "./types";
 
 /**
- * The summoned default state: empty search bar, search expanded, no filters, no cards.
+ * The default state (S0): ball column with the search box collapsed, no filters, no cards.
+ *
+ * 2026-10-23 需求变更：唤出不再展开/聚焦搜索框——先显示球列，点击搜索球才展开并聚焦
+ * （取代 #16 的「唤出即输入」；见 docs/spec/keyboard-navigation.md 的标注）。
  *
  * `focusRequest` is the token that makes the renderer move DOM focus into the search
- * input. Summoning resets to S0 *and* asks for focus (#16 K1: 唤出即输入), so a fresh
- * default state start at request 0 and the renderer only acts once the token is > 0.
+ * input; only `expand-search` increments it, so a fresh default state starts at 0 and
+ * the renderer acts once the token is > 0.
  */
-export function createDefaultHudState(focusRequest = 0): HudState {
+export function createDefaultHudState(): HudState {
   return {
     view: "default",
     search: {
-      expanded: true,
+      expanded: false,
       query: "",
-      focusRequest,
+      focusRequest: 0,
     },
     balls: BALL_SLOTS,
     phase: "visible",
@@ -24,8 +27,9 @@ export function createDefaultHudState(focusRequest = 0): HudState {
 export function hudReducer(state: HudState, command: HudCommand): HudState {
   // 收起动画期间界面冻结：只有下一次唤出能改变状态（#26：收起期间吞键、开始收起即归还焦点）。
   if (command.type === "summon") {
-    // 唤出回到 S0 并聚焦搜索框；这是唯一能打断收起动画的命令。
-    return createDefaultHudState(state.search.focusRequest + 1);
+    // 唤出回到 S0：球列 + 搜索框收起，不请求聚焦（2026-10-23 需求变更）。
+    // 这是唯一能打断收起动画的命令。
+    return createDefaultHudState();
   }
   if (state.phase === "dismissing") return state;
 

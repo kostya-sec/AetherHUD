@@ -19,7 +19,7 @@ createRoot(document.getElementById("root")!).render(
 // Handshake order matters: register the shell listeners first, then let the shell
 // map the window and (on a manual launch) summon it. The shell emits its first
 // `hud://summon` from `frontend_ready`, so a listener registered afterwards would
-// miss the focus request that makes 唤出即输入 work.
+// miss the S0 reset (and the dismiss input lock) the shell event drives.
 async function boot(): Promise<void> {
   await connectHudBridge(store);
   // The Tauri window is created hidden to avoid a transparent-window white flash.

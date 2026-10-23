@@ -70,7 +70,7 @@ AetherHUD/
 ## 4. Coding Conventions for Agents
 1. **Window Transparency Rules (Tauri v2)**:
    - `tauri.conf.json`: `"transparent": true`, `"decorations": false`, `"shadow": false`, `"noRedirectionBitmap": true` (Windows), `"macOSPrivateApi": true`.
-   - Never use `hide()`/`show()` for HUD visibility: use off-screen docking + `set_position` (dismiss) / `show → set_position → set_focus` (summon). macOS uses NSPanel + `window_did_resign_key`; blur dismiss needs ~250ms grace. Click-through = whole-window `set_ignore_cursor_events` + cursor polling hitboxes. Convert physical↔logical with scaleFactor; clamp to one monitor.
+   - Never use `hide()`/`show()` for HUD visibility: use off-screen docking + `set_position` (dismiss) / `set_position(dock) → show → set_focus` on the first map, then `show → set_position → set_focus` (summon). A `--hidden` start stays unmapped until its first summon (no focus steal). macOS uses NSPanel + `window_did_resign_key`; blur dismiss needs ~250ms grace. Click-through = whole-window `set_ignore_cursor_events` + cursor polling hitboxes. Convert physical↔logical with scaleFactor; clamp to one monitor.
 2. **Fail-safe Ingestion & Classification Flow**:
    - Step 1: Input enters `entries` with `pipeline_status = pending` and a `pipeline_jobs` row, in one transaction; notify frontend via the `inbox-updated` event.
    - Step 2: Worker (single, serial) fetches with the degradation chain (direct 8s / Jina 20s), stores `body_md` ≤1500 chars + `excerpt` ≤500.

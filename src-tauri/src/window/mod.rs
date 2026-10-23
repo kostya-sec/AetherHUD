@@ -142,10 +142,21 @@ impl HudWindow {
         if self.ready.swap(true, Ordering::SeqCst) {
             return;
         }
-        self.reveal_offscreen();
 
-        let pending = PENDING_SUMMON.swap(false, Ordering::SeqCst);
-        if self.launch_mode == LaunchMode::ShowHud || pending {
+        // Capture the previously foreground app *before* mapping the window: showing a
+        // window can take the foreground, and then there would be nothing to hand back.
+        let wanted =
+            self.launch_mode == LaunchMode::ShowHud || PENDING_SUMMON.swap(false, Ordering::SeqCst);
+        if wanted {
+            self.remember_previous_app();
+        }
+
+        // Resident (`--hidden`) starts stay unmapped: a window that is never shown
+        // cannot steal focus from the application the user is in. The first summon maps
+        // it off screen (see `start_summon`). A manual launch maps it now so the webview
+        // paints before the slide-in.
+        if wanted {
+            self.reveal_offscreen();
             self.summon_from_user(SummonReason::Launch);
         }
     }
@@ -280,7 +291,9 @@ impl HudWindow {
         true
     }
 
-    /// Parks the window just below the monitor without showing it, then shows it.
+    /// Maps the window just below the monitor before the first summon of a manual
+    /// launch. The previous foreground app is captured *before* this runs, so the show
+    /// activating the HUD is harmless.
     fn reveal_offscreen(&self) {
         let (_, dock) = self.target_and_dock();
 
@@ -330,15 +343,17 @@ impl HudWindow {
         };
 
         // Windows foreground lock: show → set_position → set_focus in one tight
-        // sequence, otherwise the first click after a summon is eaten (#24 §8).
+        // sequence, otherwise the first click after a summon is eaten (#24 §8). A window
+        // that was never mapped (resident start) is parked at the slide origin *before*
+        // the first show, so it cannot flash at its creation position.
         if !visible {
+            let _ = self
+                .window
+                .set_position(LogicalPosition::new(from.0, from.1));
             if let Err(error) = self.window.show() {
                 eprintln!("[aetherhud] failed to map the HUD window: {error}");
             }
         }
-        let _ = self
-            .window
-            .set_position(LogicalPosition::new(from.0, from.1));
         self.set_click_through(true);
         self.focus_window();
         // Emit only after the window owns focus: the webview answers with a DOM focus

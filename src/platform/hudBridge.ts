@@ -56,7 +56,7 @@ export function dismissHud(): void {
 
 /**
  * Wires the HUD model to the OS shell:
- * - `hud://summon` resets to S0 and requests search focus (唤出即输入),
+ * - `hud://summon` resets to S0 (ball column, search collapsed, no focus request),
  * - `hud://dismiss` starts the input lock (收起期间吞键),
  * - the capture-phase keydown guard handles Esc and swallows keys while dismissing,
  * - `compositionend` timestamps feed the 100 ms IME grace window.

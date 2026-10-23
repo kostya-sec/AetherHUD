@@ -6,14 +6,15 @@
 
 ## 1. 显隐模型（不使用 hide()/show()）
 
-- 进程启动时窗口 `visible:false`；前端首帧后调用 `frontend_ready`，外壳把窗口停在**屏外停靠位**（目标 x、监视器底边下方 1px）并 `show()` 一次。此后窗口始终 visible，显隐只是位置变化。
+- 进程启动时窗口 `visible:false`、`focus:false`（tao 创建窗口时可能让隐藏窗口取得前台，故创建期不聚焦）；前端首帧后调用 `frontend_ready`。手动启动：先在**屏外停靠位**（目标 x、监视器底边下方 1px）`show()` 一次再唤出；`--hidden` 驻留启动：**不映射窗口**，直到第一次唤出才「先停靠 → show → 聚焦 → 滑入」，因此开机自启/重复触发不会抢焦点。首次映射之后的窗口始终 visible，显隐只是位置变化。
 - 状态机 `window/motion.rs`：`Hidden → Showing → Visible → Dismissing → Hidden`。
   - 动画 `SLIDE_DURATION = 180ms`，12ms/帧，`ease-out-cubic`；新动画通过代数计数器取消旧动画（连击不抖动）。
   - 用户切换（热键/托盘左键）防抖 `TOGGLE_DEBOUNCE = 160ms`；**显式 Esc / 关闭请求不受防抖限制**。
   - 收起动画期间前端进入 `dismissing` 阶段：吞掉所有键（含输入法事件），下一次唤出才解除。
-- 唤出顺序（Windows 前台锁）：`show → set_position ` → `set_focus` 紧凑调用，然后发 `hud://summon`，最后滑入。**事件必须晚于 set_focus**，否则网页的「聚焦搜索框」会与系统焦点竞争（K1 唤出即输入）。滑动起点 = 窗口当前位置（已收起时即屏外停靠位），不做屏内钳制，保证「从屏外滑入」。
+- 唤出顺序（Windows 前台锁）：`show → set_position → set_focus` 紧凑调用，然后发 `hud://summon`，最后滑入。**事件必须晚于 set_focus**，保证窗口一出现就能接收键盘（2026-10-23 需求变更后网页不再自动聚焦搜索框，但窗口先拿到焦点仍是点击搜索球后立即可输入的前提）。滑动起点 = 窗口当前位置（已收起时即屏外停靠位），不做屏内钳制，保证「从屏外滑入」。
+- 唤出回到 S0（**2026-10-23 需求变更，取代 #16「唤出即输入」**）：界面为球列 + 搜索框收起，**不自动聚焦**；点击搜索球才展开搜索框并聚焦。`hud://summon` 只负责重置，不含聚焦请求。
 - Esc 的全局判定延后一拍（`setTimeout(0)`），且组合结束（`compositionend`）后 100ms 宽限内不判定 Esc（#17 §7，WKWebView 可能先给 compositionend 再给确认键）。
-- 唤出动画期间输入立即可用；收起开始即归还焦点（见 §2）。
+- 唤出动画期间窗口立即可交互（点击搜索球即可展开输入）；收起开始即归还焦点（见 §2）。
 
 ## 2. 焦点归还
 
@@ -69,14 +70,14 @@
 
 | 方向 | 名称 | 语义 |
 | --- | --- | --- |
-| Rust → 前端 | `hud://summon` | 开始唤出：模型重置 S0 并请求搜索框聚焦 |
+| Rust → 前端 | `hud://summon` | 开始唤出：模型重置 S0（球列 + 搜索框收起，不请求聚焦） |
 | Rust → 前端 | `hud://dismiss` | 开始收起：进入 `dismissing`，吞键直到下次唤出 |
 | Rust → 前端 | `hud://settings/open` / `hud://about/open` | 托盘入口（T22/T23 消费） |
 | 前端 → Rust | `frontend_ready` | 首帧握手：注册事件监听之后调用；触发一次性映射与首次唤出 |
 | 前端 → Rust | `request_dismiss` | Esc 收起 |
 | 前端 → Rust | `set_hit_boxes` | 交互区矩形（CSS px，窗口相对） |
 | 前端 → Rust | `hud_status` | 阶段、启动形态、热键注册状态 |
-| Rust → 前端（事件顺序） | 唤出：focus 先于 `hud://summon` | 保证 K1 |
+| Rust → 前端（事件顺序） | 唤出：focus 先于 `hud://summon` | 窗口先拿到系统焦点，键盘立即可用（2026-10-23 起不再自动聚焦搜索框） |
 
 ## 11. 验证
 
@@ -84,7 +85,7 @@
 
 - Rust 单测：几何钳制/停靠、动画缓动、状态机（防抖/失焦宽限/打断）、hitbox 命中与 ignore 翻转、启动参数、热键解析与展示。
 - 前端单测：S0 重置与 focusRequest、dismissing 吞键、Esc 守卫、IPC 动作。
-- Windows 真机手工验收清单（#24 决议：不新增 OS 壳自动化缝，v1 不做 WebDriver E2E）：启动唤出、立刻输入、点击穿透（`WS_EX_TRANSPARENT` 随 hitbox 切换）、热键/Esc 收起与焦点归还、WM_CLOSE 收起、第二实例（含 `--hidden`）、`--hidden` 首次启动驻留。本地可写脚本跑，但不入库。
+- Windows 真机手工验收清单（#24 决议：不新增 OS 壳自动化缝，v1 不做 WebDriver E2E）：启动唤出（默认球列）、点击搜索球展开并输入、点击穿透（`WS_EX_TRANSPARENT` 随 hitbox 切换）、热键/Esc 收起与焦点归还、WM_CLOSE 收起、第二实例（含 `--hidden`）、`--hidden` 首次启动驻留。本地可写脚本跑，但不入库。
 
 真机回归（本机为 Windows，macOS 未实测）：
 
