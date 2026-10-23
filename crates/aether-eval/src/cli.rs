@@ -11,7 +11,7 @@ use serde_json::Map;
 
 use aether_classifier::config::{load_few_shots, load_tag_pool};
 use aether_classifier::engine::ClassificationEngine;
-use aether_classifier::provider::{ChatClient, ProviderConfig};
+use aether_classifier::provider::{ChatClient, MessageType, ProviderConfig};
 use aether_classifier::retry::RetryPolicy;
 use aether_classifier::taxonomy::EffectiveSource;
 use aether_classifier::{EntryForClassify, PromptConfig};
@@ -715,6 +715,8 @@ fn build_provider_config(
         base_url,
         model,
         api_key,
+        // 评测 CLI 暂不暴露消息格式开关：默认 Chat Completions，保持既有行为。
+        message_type: MessageType::ChatCompletions,
         temperature: args.temperature.unwrap_or(0.0),
         max_tokens: args.max_tokens.unwrap_or(400),
         request_timeout: Duration::from_secs(args.timeout_secs.unwrap_or(30)),

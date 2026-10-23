@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import {
   SETTINGS_SECTIONS,
   type CredentialKind,
+  type ProviderProfile,
   type SettingsSectionId,
   type SettingsState,
   type ValidationTarget,
@@ -18,6 +19,8 @@ interface HudSettingsModalProps {
   onSaveCredential: (kind: CredentialKind, secret: string) => Promise<boolean>;
   onClearCredential: (kind: CredentialKind) => Promise<boolean>;
   onValidate: (target: ValidationTarget) => Promise<void>;
+  /** 保存活动 LLM 供应商配置（base URL / model / 消息格式）。 */
+  onSaveProviderProfile: (profile: ProviderProfile) => Promise<boolean>;
   onQuit: () => void;
 }
 
@@ -39,6 +42,7 @@ export function HudSettingsModal({
   onSaveCredential,
   onClearCredential,
   onValidate,
+  onSaveProviderProfile,
   onQuit,
 }: HudSettingsModalProps) {
   const dialogRef = useRef<HTMLElement>(null);
@@ -134,6 +138,7 @@ export function HudSettingsModal({
                 onSaveCredential={onSaveCredential}
                 onClearCredential={onClearCredential}
                 onValidate={onValidate}
+                onSaveProviderProfile={onSaveProviderProfile}
               />
             ) : (
               <div

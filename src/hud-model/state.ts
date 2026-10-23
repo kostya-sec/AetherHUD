@@ -33,6 +33,9 @@ export function createDefaultHudState(
       open: false,
       section: DEFAULT_SETTINGS_SECTION,
       credentials: {
+        profile: null,
+        profileBusy: false,
+        profileMessage: null,
         statuses: [],
         loading: false,
         busy: null,
@@ -232,6 +235,8 @@ export function hudReducer(state: HudState, command: HudCommand): HudState {
             loading: true,
             busy: null,
             message: null,
+            profileMessage: null,
+            profileBusy: false,
           },
         },
       };
@@ -248,6 +253,7 @@ export function hudReducer(state: HudState, command: HudCommand): HudState {
             ...state.settings.credentials,
             loading: false,
             busy: null,
+            profileBusy: false,
           },
         },
       };
@@ -259,6 +265,51 @@ export function hudReducer(state: HudState, command: HudCommand): HudState {
       return {
         ...state,
         settings: { ...state.settings, section: command.section },
+      };
+    }
+
+    case "set-provider-profile": {
+      // 关闭弹层后迟到的响应被忽略（与凭证状态同一约定）。
+      if (!state.settings.open) return state;
+      if (state.settings.credentials.profile === command.profile) return state;
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          credentials: {
+            ...state.settings.credentials,
+            profile: command.profile,
+          },
+        },
+      };
+    }
+
+    case "set-provider-profile-busy": {
+      if (!state.settings.open) return state;
+      if (state.settings.credentials.profileBusy === command.busy) return state;
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          credentials: {
+            ...state.settings.credentials,
+            profileBusy: command.busy,
+          },
+        },
+      };
+    }
+
+    case "set-provider-profile-message": {
+      if (!state.settings.open) return state;
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          credentials: {
+            ...state.settings.credentials,
+            profileMessage: command.message,
+          },
+        },
       };
     }
 

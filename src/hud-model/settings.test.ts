@@ -9,10 +9,14 @@ import {
   selectSettingsOpen,
   selectSettingsRow,
   selectSettingsSection,
+  MESSAGE_TYPE_OPTIONS,
+  PROVIDER_PRESETS,
+  providerProfileDraft,
   SETTINGS_ROW_ITEMS,
   SETTINGS_SECTIONS,
   type CredentialStatus,
   type CredentialValidationView,
+  type ProviderProfile,
 } from "./index";
 
 const status = (overrides: Partial<CredentialStatus> = {}): CredentialStatus => ({
@@ -36,6 +40,16 @@ const validation = (
 function openedSettings() {
   return hudReducer(createDefaultHudState(), { type: "open-settings" });
 }
+
+const providerProfile = (
+  overrides: Partial<ProviderProfile> = {},
+): ProviderProfile => ({
+  preset: "openai",
+  baseUrl: "https://api.openai.com/v1",
+  model: "gpt-4o-mini",
+  messageType: "chat_completions",
+  ...overrides,
+});
 
 describe("设置弹层（#29）", () => {
   it("默认关闭，入口行的「设置」已接通", () => {
@@ -179,6 +193,100 @@ describe("设置弹层（#29）", () => {
       "7200",
     );
     expect(selectSettings(state).credentials.message?.tone).toBe("ok");
+  });
+
+  it("供应商预设按百炼→OpenAI→DeepSeek→自定义排序，默认 Chat Completions", () => {
+    expect(PROVIDER_PRESETS.map((preset) => preset.id)).toEqual([
+      "bailian",
+      "openai",
+      "deepseek",
+      "custom",
+    ]);
+    expect(PROVIDER_PRESETS[0]).toMatchObject({
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      model: "qwen-flash",
+      messageType: "chat_completions",
+    });
+    expect(PROVIDER_PRESETS[1]).toMatchObject({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o-mini",
+    });
+    expect(PROVIDER_PRESETS[3]).toMatchObject({
+      baseUrl: "",
+      model: "",
+      messageType: "chat_completions",
+    });
+    expect(MESSAGE_TYPE_OPTIONS.map((option) => option.id)).toEqual([
+      "chat_completions",
+      "responses",
+    ]);
+    expect(providerProfileDraft("custom")).toEqual({
+      preset: "custom",
+      baseUrl: "",
+      model: "",
+      messageType: "chat_completions",
+    });
+  });
+
+  it("供应商配置只在弹层打开时写入，关闭后迟到响应被忽略", () => {
+    const closed = createDefaultHudState();
+    expect(
+      hudReducer(closed, { type: "set-provider-profile", profile: providerProfile() }),
+    ).toBe(closed);
+    expect(
+      hudReducer(closed, {
+        type: "set-provider-profile-message",
+        message: { tone: "ok", text: "已保存" },
+      }),
+    ).toBe(closed);
+
+    let state = openedSettings();
+    state = hudReducer(state, {
+      type: "set-provider-profile",
+      profile: providerProfile(),
+    });
+    expect(selectSettings(state).credentials.profile).toEqual(providerProfile());
+
+    state = hudReducer(state, { type: "set-provider-profile-busy", busy: true });
+    expect(selectSettings(state).credentials.profileBusy).toBe(true);
+
+    state = hudReducer(state, {
+      type: "set-provider-profile-message",
+      message: { tone: "ok", text: "供应商配置已保存" },
+    });
+    expect(selectSettings(state).credentials.profileMessage).toEqual({
+      tone: "ok",
+      text: "供应商配置已保存",
+    });
+  });
+
+  it("重新打开设置会清掉供应商提示与忙碌，但保留上次读到的配置", () => {
+    let state = openedSettings();
+    state = hudReducer(state, {
+      type: "set-provider-profile",
+      profile: providerProfile(),
+    });
+    state = hudReducer(state, {
+      type: "set-provider-profile-message",
+      message: { tone: "error", text: "保存失败" },
+    });
+    state = hudReducer(state, { type: "set-provider-profile-busy", busy: true });
+    state = hudReducer(state, { type: "close-settings" });
+    expect(selectSettings(state).credentials.profileBusy).toBe(false);
+
+    state = hudReducer(state, { type: "open-settings" });
+    expect(selectSettings(state).credentials.profile).toEqual(providerProfile());
+    expect(selectSettings(state).credentials.profileMessage).toBeNull();
+  });
+
+  it("唤出重置会清掉供应商配置，下次打开由平台层重新加载", () => {
+    let state = openedSettings();
+    state = hudReducer(state, {
+      type: "set-provider-profile",
+      profile: providerProfile(),
+    });
+    state = hudReducer(state, { type: "summon" });
+    expect(selectSettings(state).credentials.profile).toBeNull();
   });
 
   it("从托盘事件打开时先唤出重置、再打开指定分区（事件顺序）", () => {

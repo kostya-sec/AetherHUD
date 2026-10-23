@@ -49,6 +49,8 @@ pub fn run() {
             commands::hud_take_notices,
             commands::ingest_text,
             commands::hud_inbox,
+            commands::settings_provider_profile,
+            commands::settings_save_provider_profile,
             commands::settings_credential_statuses,
             commands::settings_save_credential,
             commands::settings_clear_credential,

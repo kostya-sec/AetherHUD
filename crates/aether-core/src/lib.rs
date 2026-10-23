@@ -11,6 +11,7 @@ pub mod ingest;
 pub mod navigation;
 pub mod notice;
 pub mod paths;
+pub mod provider;
 pub mod search;
 pub mod storage;
 pub mod taxonomy;

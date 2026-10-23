@@ -2,6 +2,9 @@ import type {
   BallSlot,
   CredentialKind,
   KeyHint,
+  MessageType,
+  ProviderPreset,
+  ProviderProfile,
   SettingsRowItem,
   SettingsSectionId,
   TaxonomyL1,
@@ -122,6 +125,92 @@ export const CREDENTIAL_KINDS: readonly CredentialKind[] = [
   "feishuAppSecret",
 ];
 
+/** 供应商预设的默认值（与 aether-core::provider::ProviderPreset 保持一致）。 */
+export interface ProviderPresetMeta {
+  readonly id: ProviderPreset;
+  readonly label: string;
+  /** 一句话说明，帮助用户选对预设。 */
+  readonly description: string;
+  readonly baseUrl: string;
+  readonly model: string;
+  readonly messageType: MessageType;
+}
+
+/**
+ * 供应商预设（#45 前置）：百炼默认，可切 OpenAI / DeepSeek / 自定义 OpenAI 兼容。
+ * 预设只填默认值；同一时间只有一套活动配置，换供应商要重填 Key。
+ */
+export const PROVIDER_PRESETS: readonly ProviderPresetMeta[] = [
+  {
+    id: "bailian",
+    label: "阿里百炼（DashScope）",
+    description: "v1 默认；OpenAI 兼容端点，qwen-flash 成本低、速度快",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    model: "qwen-flash",
+    messageType: "chat_completions",
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    description: "官方 api.openai.com；gpt-4o-mini 适合短文本分类",
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4o-mini",
+    messageType: "chat_completions",
+  },
+  {
+    id: "deepseek",
+    label: "DeepSeek",
+    description: "OpenAI 兼容端点；deepseek-chat",
+    baseUrl: "https://api.deepseek.com/v1",
+    model: "deepseek-chat",
+    messageType: "chat_completions",
+  },
+  {
+    id: "custom",
+    label: "自定义（OpenAI 兼容）",
+    description: "自填 Base URL 与模型 ID；支持 Chat Completions 或 Responses",
+    baseUrl: "",
+    model: "",
+    messageType: "chat_completions",
+  },
+];
+
+/** 按 id 取预设元数据；未知 id 回落到百炼。 */
+export function providerPreset(preset: ProviderPreset): ProviderPresetMeta {
+  return PROVIDER_PRESETS.find((entry) => entry.id === preset) ?? PROVIDER_PRESETS[0];
+}
+
+/** 预设的初始草稿（切换预设时填入面板；custom 为空，由用户自己填）。 */
+export function providerProfileDraft(preset: ProviderPreset): ProviderProfile {
+  const meta = providerPreset(preset);
+  return {
+    preset: meta.id,
+    baseUrl: meta.baseUrl,
+    model: meta.model,
+    messageType: meta.messageType,
+  };
+}
+
+export interface MessageTypeMeta {
+  readonly id: MessageType;
+  readonly label: string;
+  readonly description: string;
+}
+
+/** 两种消息格式（API 协议）；Chat Completions 是默认。 */
+export const MESSAGE_TYPE_OPTIONS: readonly MessageTypeMeta[] = [
+  {
+    id: "chat_completions",
+    label: "Chat Completions",
+    description: "POST {base}/chat/completions，body.messages[]",
+  },
+  {
+    id: "responses",
+    label: "Responses",
+    description: "POST {base}/responses，body.input[]，读 output_text",
+  },
+];
+
 /** 设置弹层默认分区：通用（十区的第一项）。 */
 export const DEFAULT_SETTINGS_SECTION: SettingsSectionId = "general";
 
@@ -169,7 +258,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
     id: "credentials",
     label: "凭证",
     implemented: true,
-    summary: "分类 Key、Jina Key、飞书 App ID / App Secret（本票 #29）",
+    summary:
+      "分类器供应商（预设 / Base URL / 模型 / 消息格式）、分类 Key、Jina Key、飞书 App ID / App Secret（#29 / #45 前置）",
   },
   {
     id: "ingestion",

@@ -146,6 +146,20 @@ export interface CredentialStatus {
   readonly reference: string;
 }
 
+/** LLM 供应商预设（与 aether-core::provider::ProviderPreset 同形）。 */
+export type ProviderPreset = "bailian" | "openai" | "deepseek" | "custom";
+
+/** 消息格式 / API 协议（与 aether-core::provider::MessageType 同形）。 */
+export type MessageType = "chat_completions" | "responses";
+
+/** 活动供应商配置（与 aether-core::provider::ProviderProfile 同形，camelCase）。 */
+export interface ProviderProfile {
+  readonly preset: ProviderPreset;
+  readonly baseUrl: string;
+  readonly model: string;
+  readonly messageType: MessageType;
+}
+
 /** 可点「验证」的三个连通性目标。 */
 export type ValidationTarget = "classifier" | "jina" | "feishu";
 
@@ -165,8 +179,14 @@ export interface CredentialMessage {
   readonly text: string;
 }
 
-/** 凭证区数据：状态 + 忙碌 + 验证结果 + 一次性反馈。 */
+/** 凭证区数据：供应商配置 + 状态 + 忙碌 + 验证结果 + 一次性反馈。 */
 export interface CredentialsState {
+  /** 活动供应商配置；null = 尚未从壳读到（打开设置时由平台层加载）。 */
+  readonly profile: ProviderProfile | null;
+  /** 保存供应商配置的忙碌标志（与凭证单项 busy 分开，互不阻塞）。 */
+  readonly profileBusy: boolean;
+  /** 供应商配置的一次性反馈（保存成功/校验失败/读取失败）。 */
+  readonly profileMessage: CredentialMessage | null;
   readonly statuses: readonly CredentialStatus[];
   readonly loading: boolean;
   readonly busy: CredentialBusyKey | null;
@@ -275,6 +295,12 @@ export type HudCommand =
   | { readonly type: "open-settings"; readonly section?: SettingsSectionId }
   | { readonly type: "close-settings" }
   | { readonly type: "select-settings-section"; readonly section: SettingsSectionId }
+  | { readonly type: "set-provider-profile"; readonly profile: ProviderProfile }
+  | { readonly type: "set-provider-profile-busy"; readonly busy: boolean }
+  | {
+      readonly type: "set-provider-profile-message";
+      readonly message: CredentialMessage | null;
+    }
   | { readonly type: "set-credentials-loading"; readonly loading: boolean }
   | { readonly type: "set-credential-statuses"; readonly statuses: readonly CredentialStatus[] }
   | { readonly type: "update-credential-status"; readonly status: CredentialStatus }

@@ -19,6 +19,7 @@ import {
   selectCredentialValidation,
   selectSettings,
   type CredentialStatus,
+  type ProviderProfile,
 } from "../hud-model";
 import {
   ABOUT_OPEN_EVENT,
@@ -26,9 +27,13 @@ import {
   clearCredential,
   connectSettingsEvents,
   loadCredentialStatuses,
+  loadProviderProfile,
+  normalizeProviderProfile,
   quitApp,
   saveCredential,
+  saveProviderProfile,
   validateCredential,
+  validateProviderProfile,
 } from "./settings";
 
 const configured: CredentialStatus = {
@@ -44,6 +49,16 @@ function openedStore() {
   store.dispatch({ type: "open-settings" });
   return store;
 }
+
+const providerProfile = (
+  overrides: Partial<ProviderProfile> = {},
+): ProviderProfile => ({
+  preset: "custom",
+  baseUrl: "https://llm.example.com/v1",
+  model: "my-model",
+  messageType: "responses",
+  ...overrides,
+});
 
 describe("设置 IPC 适配（#29）", () => {
   beforeEach(() => {
@@ -147,6 +162,131 @@ describe("设置 IPC 适配（#29）", () => {
     expect(
       selectCredentialValidation(selectSettings(store.getState()).credentials, "feishu")?.detail,
     ).toContain("IPC 超时");
+  });
+
+  it("打开设置后读取活动供应商配置", async () => {
+    invokeMock.mockResolvedValueOnce(providerProfile());
+    const store = openedStore();
+
+    await loadProviderProfile(store.dispatch);
+
+    expect(invokeMock).toHaveBeenCalledWith("settings_provider_profile");
+    expect(selectSettings(store.getState()).credentials.profile).toEqual(
+      providerProfile(),
+    );
+    expect(selectSettings(store.getState()).credentials.profileMessage).toBeNull();
+  });
+
+  it("供应商配置读取失败给出可读提示，不阻塞凭证区", async () => {
+    invokeMock.mockRejectedValueOnce("核心库未启动");
+    const store = openedStore();
+
+    await loadProviderProfile(store.dispatch);
+
+    expect(selectSettings(store.getState()).credentials.profile).toBeNull();
+    expect(selectSettings(store.getState()).credentials.profileMessage).toEqual({
+      tone: "error",
+      text: "读取供应商配置失败：核心库未启动",
+    });
+  });
+
+  it("保存供应商配置：去空白与尾部斜杠、回读配置、提示成功", async () => {
+    const saved = providerProfile({
+      baseUrl: "https://llm.example.com/v1",
+      model: "my-model",
+    });
+    invokeMock.mockResolvedValueOnce(saved);
+    const store = openedStore();
+
+    const ok = await saveProviderProfile(
+      store.dispatch,
+      providerProfile({
+        baseUrl: "  https://llm.example.com/v1/  ",
+        model: "  my-model  ",
+      }),
+    );
+
+    expect(ok).toBe(true);
+    expect(invokeMock).toHaveBeenCalledWith("settings_save_provider_profile", {
+      profile: {
+        preset: "custom",
+        baseUrl: "https://llm.example.com/v1",
+        model: "my-model",
+        messageType: "responses",
+      },
+    });
+    expect(selectSettings(store.getState()).credentials.profile).toEqual(saved);
+    expect(selectSettings(store.getState()).credentials.profileBusy).toBe(false);
+    expect(selectSettings(store.getState()).credentials.profileMessage?.tone).toBe("ok");
+    expect(
+      selectSettings(store.getState()).credentials.profileMessage?.text,
+    ).toContain("my-model");
+  });
+
+  it("非法 Base URL 或空模型不发 IPC，只给可读错误", async () => {
+    const store = openedStore();
+
+    expect(
+      await saveProviderProfile(
+        store.dispatch,
+        providerProfile({ baseUrl: "api.example.com/v1" }),
+      ),
+    ).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(
+      selectSettings(store.getState()).credentials.profileMessage?.text,
+    ).toContain("http:// 或 https://");
+
+    expect(
+      await saveProviderProfile(store.dispatch, providerProfile({ model: "   " })),
+    ).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(
+      selectSettings(store.getState()).credentials.profileMessage?.text,
+    ).toContain("模型 ID 不能为空");
+
+    expect(
+      await saveProviderProfile(
+        store.dispatch,
+        providerProfile({ baseUrl: "   " }),
+      ),
+    ).toBe(false);
+    expect(
+      selectSettings(store.getState()).credentials.profileMessage?.text,
+    ).toContain("Base URL 不能为空");
+  });
+
+  it("后端拒绝保存时给出可读原因并清空忙碌", async () => {
+    invokeMock.mockRejectedValueOnce("Base URL 必须以 http:// 或 https:// 开头：x");
+    const store = openedStore();
+
+    const ok = await saveProviderProfile(store.dispatch, providerProfile());
+
+    expect(ok).toBe(false);
+    expect(selectSettings(store.getState()).credentials.profileBusy).toBe(false);
+    expect(selectSettings(store.getState()).credentials.profileMessage).toEqual({
+      tone: "error",
+      text: "保存供应商配置失败：Base URL 必须以 http:// 或 https:// 开头：x",
+    });
+  });
+
+  it("供应商配置的规范化与校验规则与 Rust 端一致", () => {
+    expect(
+      normalizeProviderProfile(
+        providerProfile({
+          baseUrl: "  https://llm.example.com/v1///  ",
+          model: "  m  ",
+        }),
+      ),
+    ).toEqual(providerProfile({ baseUrl: "https://llm.example.com/v1", model: "m" }));
+
+    expect(validateProviderProfile(providerProfile())).toBeNull();
+    expect(
+      validateProviderProfile(providerProfile({ baseUrl: "ftp://example.com" })),
+    ).toContain("http:// 或 https://");
+    expect(
+      validateProviderProfile(providerProfile({ model: "" })),
+    ).toContain("模型 ID 不能为空");
   });
 
   it("退出入口走 app.exit（托盘之外唯一退出路径）", async () => {

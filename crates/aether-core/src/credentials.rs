@@ -12,12 +12,13 @@
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::{secret_ref, Clock, HttpRequest, HttpTransport, Keychain};
+use crate::provider::{ProviderProfile, BASE_URL_SETTING};
 use crate::storage::{Database, StorageError};
 
-/// 分类器兼容端点（#15 §3.4）；可在设置的「分类与分类器」区改（#46 接入前用默认值）。
-pub const DEFAULT_CLASSIFIER_BASE_URL: &str = "https://dashscope.aliyuncs.com/compatible-mode/v1";
-/// settings 里覆盖分类器 base URL 的键。
-pub const CLASSIFIER_BASE_URL_SETTING: &str = "classifier.base_url";
+/// 默认分类器兼容端点（百炼，见 #15 §3.4）；活动值由 [`ProviderProfile`] 决定。
+pub const DEFAULT_CLASSIFIER_BASE_URL: &str = crate::provider::BAILIAN_BASE_URL;
+/// settings 里保存分类器 base URL 的键（与 [`crate::provider::BASE_URL_SETTING`] 同键）。
+pub const CLASSIFIER_BASE_URL_SETTING: &str = BASE_URL_SETTING;
 /// Jina 验证用的一次读（#15 §4）。
 pub const JINA_READ_PROBE_URL: &str = "https://r.jina.ai/https://example.com";
 /// 飞书 tenant_access_token 交换端点（#15 §4 / #5）。
@@ -280,29 +281,35 @@ impl<'a> CredentialService<'a> {
         }
     }
 
-    fn classifier_base_url(&self) -> String {
-        self.database
-            .setting_get::<String>(CLASSIFIER_BASE_URL_SETTING)
-            .ok()
-            .flatten()
-            .filter(|base| !base.trim().is_empty())
-            .unwrap_or_else(|| DEFAULT_CLASSIFIER_BASE_URL.to_string())
-    }
-
+    /// 验证分类器：用**活动供应商配置**（settings 里的 base URL）做 GET /models。
+    ///
+    /// 配置未保存时回落到百炼默认值，行为与 #29 等价；自定义供应商没填 base URL
+    /// 时直接给可读提示，不发请求。
     async fn validate_classifier(&self, transport: &dyn HttpTransport) -> ValidationOutcome {
+        let profile = match ProviderProfile::load(self.database) {
+            Ok(profile) => profile,
+            Err(error) => return failure(format!("无法读取供应商配置：{error}"), &[]),
+        };
+        let provider = profile.preset.label();
+        if profile.base_url.trim().is_empty() {
+            return failure(
+                "请先在凭证区保存供应商配置（Base URL 与模型），再验证分类器 Key",
+                &[],
+            );
+        }
         let key = match self.secret(CredentialKind::ClassifierApiKey) {
             Ok(Some(key)) => key,
             Ok(None) => {
-                return failure(
-                    "尚未配置百炼 API Key（分类器不可用，条目会落到 00 未分类 / 待人工归档）",
-                    &[],
-                )
+                let detail = format!(
+                    "尚未配置「{provider}」API Key（分类器不可用，条目会落到 00 未分类 / 待人工归档）"
+                );
+                return failure(detail, &[]);
             }
             Err(error) => return failure(format!("无法读取系统钥匙串：{error}"), &[]),
         };
         let secrets = [key.clone()];
-        let base = self.classifier_base_url();
-        let url = format!("{}/models", base.trim_end_matches('/'));
+        let base = profile.base_url.trim_end_matches('/').to_string();
+        let url = format!("{base}/models");
         let request = HttpRequest::get(url)
             .with_header("authorization", format!("Bearer {key}"))
             .with_timeout_ms(VALIDATION_TIMEOUT_MS);
@@ -311,7 +318,7 @@ impl<'a> CredentialService<'a> {
             Err(error) => {
                 return failure(
                     format!(
-                        "无法连接百炼：{error}。若本机需要代理，请在「网络」设置中配置代理后重试。"
+                        "无法连接「{provider}」：{error}。若本机需要代理，请在「网络」设置中配置代理后重试。"
                     ),
                     &secrets,
                 )
@@ -327,27 +334,39 @@ impl<'a> CredentialService<'a> {
                             .map(Vec::len)
                     });
                 match models {
-                    Some(count) => success(format!("百炼连接正常（{count} 个模型）")),
-                    None => success("百炼连接正常"),
+                    Some(count) => success(format!(
+                        "「{provider}」连接正常（{count} 个模型，模型 {}）",
+                        profile.model
+                    )),
+                    None => success(format!("「{provider}」连接正常（模型 {}）", profile.model)),
                 }
             }
             401 | 403 => failure(
                 format!(
-                    "百炼 Key 无效或没有访问权限（HTTP {}）。请重新复制 API Key。",
+                    "「{provider}」Key 无效或没有访问权限（HTTP {}）。请重新复制 API Key。",
                     response.status
                 ),
                 &secrets,
             ),
             404 => failure(
-                format!("百炼兼容端点不存在（HTTP 404）。请检查 Base URL：{base}"),
+                format!(
+                    "「{provider}」兼容端点不存在（HTTP 404）。请检查 Base URL（{base}）与模型（{}）。",
+                    profile.model
+                ),
                 &secrets,
             ),
-            429 => failure("百炼请求过于频繁（HTTP 429），请稍后重试。", &secrets),
+            429 => failure(
+                format!("「{provider}」请求过于频繁（HTTP 429），请稍后重试。"),
+                &secrets,
+            ),
             status if status >= 500 => failure(
-                format!("百炼服务端暂时不可用（HTTP {status}），请稍后重试。"),
+                format!("「{provider}」服务端暂时不可用（HTTP {status}），请稍后重试。"),
                 &secrets,
             ),
-            status => failure(format!("百炼验证失败（HTTP {status}）。"), &secrets),
+            status => failure(
+                format!("「{provider}」验证失败（HTTP {status}）。"),
+                &secrets,
+            ),
         }
     }
 
@@ -507,6 +526,7 @@ mod tests {
         FakeClock, FakeHttpTransport, MemoryKeychain, UnavailableKeychain,
     };
     use crate::adapters::{HttpMethod, HttpResponse};
+    use crate::provider::{MessageType, ProviderPreset, PROVIDER_SETTING};
 
     fn service_fixture<'a>(
         keychain: &'a MemoryKeychain,
@@ -773,6 +793,78 @@ mod tests {
             .await;
 
         assert!(outcome.ok, "{}", outcome.detail);
+    }
+
+    #[tokio::test]
+    async fn classifier_validation_uses_the_saved_custom_provider_profile() {
+        let keychain = MemoryKeychain::new();
+        let database = Database::open_in_memory().unwrap();
+        let clock = FakeClock::new(1_761_000_000_000);
+        let service = configured_service_fixture(&keychain, &database, &clock);
+        let profile = ProviderProfile {
+            preset: ProviderPreset::Custom,
+            base_url: "https://llm.example.com/openai/v1".to_string(),
+            model: "my-model".to_string(),
+            message_type: MessageType::Responses,
+        };
+        ProviderProfile::save(&database, &profile, 0).unwrap();
+        let transport = FakeHttpTransport::new();
+        transport.enqueue("https://llm.example.com/openai/v1/models", http_status(404));
+
+        let outcome = service
+            .validate(ValidationTarget::Classifier, &transport)
+            .await;
+
+        assert!(!outcome.ok);
+        assert!(
+            outcome.detail.contains("自定义供应商"),
+            "失败信息要带上供应商：{}",
+            outcome.detail
+        );
+        assert!(
+            outcome.detail.contains("https://llm.example.com/openai/v1"),
+            "失败信息要带上活动 Base URL：{}",
+            outcome.detail
+        );
+        assert!(
+            outcome.detail.contains("my-model"),
+            "失败信息要带上活动模型：{}",
+            outcome.detail
+        );
+        let requests = transport.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0].url, "https://llm.example.com/openai/v1/models",
+            "验证必须打活动供应商的 Base URL"
+        );
+        assert!(!outcome.detail.contains("sk-bailian-secret"));
+    }
+
+    #[tokio::test]
+    async fn custom_provider_without_a_saved_base_url_asks_to_configure_it_first() {
+        let keychain = MemoryKeychain::new();
+        let database = Database::open_in_memory().unwrap();
+        let clock = FakeClock::new(1_761_000_000_000);
+        let service = configured_service_fixture(&keychain, &database, &clock);
+        database
+            .setting_set(PROVIDER_SETTING, &"custom".to_string(), 0)
+            .unwrap();
+        let transport = FakeHttpTransport::new();
+
+        let outcome = service
+            .validate(ValidationTarget::Classifier, &transport)
+            .await;
+
+        assert!(!outcome.ok);
+        assert!(
+            outcome.detail.contains("请先在凭证区保存供应商配置"),
+            "{}",
+            outcome.detail
+        );
+        assert!(
+            transport.requests().is_empty(),
+            "未配置 base URL 时不应发请求"
+        );
     }
 
     #[tokio::test]

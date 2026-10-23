@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{AppHandle, Manager};
 
-use aether_core::adapters::{OsKeychain, ReqwestTransport, StdFileSystem, SystemClock};
+use aether_core::adapters::{Clock, OsKeychain, ReqwestTransport, StdFileSystem, SystemClock};
 use aether_core::credentials::{
     CredentialKind, CredentialService, CredentialStatus, ValidationOutcome, ValidationTarget,
 };
@@ -15,6 +15,7 @@ use aether_core::inbox::{InboxCursor, InboxPage};
 use aether_core::ingest::IngestOutcome;
 use aether_core::navigation::HudNavigation;
 use aether_core::notice::HudNotice;
+use aether_core::provider::ProviderProfile;
 use aether_core::{Core, CoreConfig, CoreDeps};
 
 /// 本机调试用的底表覆盖路径（发布版不需要设置）。
@@ -117,6 +118,22 @@ impl CoreState {
     pub fn inbox_page(&self, cursor: Option<InboxCursor>) -> Result<InboxPage, String> {
         self.core()?
             .inbox_page(cursor)
+            .map_err(|error| error.to_string())
+    }
+
+    /// 活动 LLM 供应商配置（#45 前置）：预设 / base URL / 模型 / 消息格式。
+    ///
+    /// 缺失或坏值逐键回落到预设默认值，设置页永远能打开。
+    pub fn provider_profile(&self) -> Result<ProviderProfile, String> {
+        ProviderProfile::load(self.core()?.database()).map_err(|error| error.to_string())
+    }
+
+    /// 保存活动供应商配置：非秘密，逐键写 settings；校验失败返回可读原因。
+    pub fn save_provider_profile(
+        &self,
+        profile: &ProviderProfile,
+    ) -> Result<ProviderProfile, String> {
+        ProviderProfile::save(self.core()?.database(), profile, self.clock.now_ms())
             .map_err(|error| error.to_string())
     }
 

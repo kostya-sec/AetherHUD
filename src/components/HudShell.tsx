@@ -22,8 +22,10 @@ import { submitQuickInput } from "../platform/ingest";
 import {
   clearCredential,
   loadCredentialStatuses,
+  loadProviderProfile,
   quitApp,
   saveCredential,
+  saveProviderProfile,
   validateCredential,
 } from "../platform/settings";
 import { ballTopOffset, ballTopOffsetFor } from "./ballLayout";
@@ -116,11 +118,13 @@ export function HudShell({ state, dispatch }: HudShellProps) {
     void loadInboxFirstPage(dispatch);
   }, [inboxOpen, inboxRevision, dispatch]);
 
-  // 设置弹层每次打开都重读凭证状态：钥匙串可能在别处被改（#29）。
+  // 设置弹层每次打开都重读凭证状态与活动供应商配置：钥匙串/settings 可能在别处被改
+  // （#29 / #45 前置）。两件事互不阻塞，任一失败只给可读提示。
   const settingsOpen = settings.open;
   useEffect(() => {
     if (!settingsOpen) return;
     void loadCredentialStatuses(dispatch);
+    void loadProviderProfile(dispatch);
   }, [settingsOpen, dispatch]);
 
   useEffect(() => {
@@ -238,6 +242,7 @@ export function HudShell({ state, dispatch }: HudShellProps) {
           onSaveCredential={(kind, secret) => saveCredential(dispatch, kind, secret)}
           onClearCredential={(kind) => clearCredential(dispatch, kind)}
           onValidate={(target) => validateCredential(dispatch, target)}
+          onSaveProviderProfile={(profile) => saveProviderProfile(dispatch, profile)}
           onQuit={quitApp}
         />
       )}

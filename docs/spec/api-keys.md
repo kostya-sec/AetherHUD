@@ -34,6 +34,7 @@
 | macOS | 登录钥匙串，service/account 同上 |
 
 - **数据库只存逻辑引用**，不存明文：`settings.classifier.api_key_ref`（#10 §settings）之类的字段存 `keychain://aetherhud/youtube.api_key` 这种 URI。
+- **LLM 供应商配置不是秘密**：v1 在「凭证」区支持单一活动供应商（默认百炼，可切 OpenAI / DeepSeek / 自定义 OpenAI 兼容）。`classifier.provider`、`classifier.base_url`、`classifier.model`、`classifier.message_type` 是普通 settings（value_json），不写钥匙串；密钥仍只存 Keychain account `classifier.api_key`，换供应商不新增 Keychain 条目，但要重新保存 Key。消息格式支持 `chat_completions`（默认）与 `responses`；Anthropic / Gemini 原生协议不在 v1 范围。
 - 未配置的凭证在设置页显示「未配置」，对应功能降级而不是崩溃：
   - 无 YouTube key → 视频元数据退到 oEmbed（只有标题/作者/缩略图，见 §3.2）
   - 无百炼 key → 分类器不可用，全部条目落 `00_未分类/待人工归档`（fail-safe，#18）
@@ -44,7 +45,7 @@
 
 ### 2.2 用户怎么把凭证放进去
 
-v1 设置页「凭证」分区（信息架构见 [settings-ia.md](./settings-ia.md)；#29 已落地）负责写入：逐项保存 / 清除 / 显示已配置状态，并可验证连通性。应用写入后，设置页只显示「已配置」与 `keychain://aetherhud/<account>` 引用，不显示明文。开发阶段用脚本验证（见 §4）仍可用，但脚本不是运行时来源。
+v1 设置页「凭证」分区（信息架构见 [settings-ia.md](./settings-ia.md)；#29 已落地）负责写入：逐项保存 / 清除 / 显示已配置状态，并可验证连通性。应用写入后，设置页只显示「已配置」与 `keychain://aetherhud/<account>` 引用，不显示明文。同一分区还负责选择活动 LLM 供应商（预设 / Base URL / 模型 / 消息格式）；这些是非秘密配置，不写钥匙串。开发阶段用脚本验证（见 §4）仍可用，但脚本不是运行时来源。
 
 ## 3. 怎么拿
 

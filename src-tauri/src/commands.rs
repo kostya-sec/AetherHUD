@@ -11,6 +11,7 @@ use aether_core::inbox::{InboxCursor, InboxPage};
 use aether_core::ingest::IngestOutcome;
 use aether_core::navigation::HudNavigation;
 use aether_core::notice::HudNotice;
+use aether_core::provider::ProviderProfile;
 use serde::Deserialize;
 use tauri::AppHandle;
 use tauri::Emitter;
@@ -91,6 +92,24 @@ pub fn hud_inbox(
     cursor: Option<InboxCursor>,
 ) -> Result<InboxPage, String> {
     state.inbox_page(cursor)
+}
+
+/// 活动 LLM 供应商配置（#45 前置）：预设 + base URL + 模型 + 消息格式。
+/// 配置是非秘密 settings；Key 仍只存系统钥匙串。
+#[tauri::command]
+pub fn settings_provider_profile(
+    state: tauri::State<'_, CoreState>,
+) -> Result<ProviderProfile, String> {
+    state.provider_profile()
+}
+
+/// 保存供应商配置（base URL / 模型 / 消息格式）；校验失败返回可读原因，成功后回读。
+#[tauri::command]
+pub fn settings_save_provider_profile(
+    state: tauri::State<'_, CoreState>,
+    profile: ProviderProfile,
+) -> Result<ProviderProfile, String> {
+    state.save_provider_profile(&profile)
 }
 
 /// 凭证区四行状态（已配置 / 未配置 / 钥匙串不可用）；只返回引用，永不返回密钥（#29）。

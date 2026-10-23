@@ -40,7 +40,11 @@ export {
   L3_FILTER_BALL,
   L3_KEY_HINTS,
   L3_MEDIA_CHIPS,
+  MESSAGE_TYPE_OPTIONS,
   NOTICE_DURATION_MS,
+  PROVIDER_PRESETS,
+  providerPreset,
+  providerProfileDraft,
   PLACEHOLDER_L1_SLOTS,
   QUICK_ADD_BALL,
   SEARCH_BALL,
@@ -51,7 +55,7 @@ export {
   SETTINGS_SECTIONS,
   taxonomyBall,
 } from "./constants";
-export type { SettingsSectionMeta } from "./constants";
+export type { MessageTypeMeta, ProviderPresetMeta, SettingsSectionMeta } from "./constants";
 export {
   createDefaultHudState,
   createHudStore,
@@ -89,7 +93,10 @@ export type {
   KeyHint,
   L2PanelState,
   L3BarState,
+  MessageType,
   PipelineStatus,
+  ProviderPreset,
+  ProviderProfile,
   QuickInputState,
   SearchState,
   SettingsRowItem,

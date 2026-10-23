@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type {
-  CredentialKind,
-  CredentialStatus,
-  HudStore,
-  ValidationTarget,
+import {
+  providerPreset,
+  type CredentialKind,
+  type CredentialStatus,
+  type HudStore,
+  type ProviderProfile,
+  type ValidationTarget,
 } from "../hud-model";
 
 /** Shell → webview: tray「设置…」；与 src-tauri/src/events.rs 保持同步。 */
@@ -13,6 +15,112 @@ export const SETTINGS_OPEN_EVENT = "hud://settings/open";
 export const ABOUT_OPEN_EVENT = "hud://about/open";
 
 type Dispatch = HudStore["dispatch"];
+
+/** base URL / 模型 ID 的长度上限与 Rust 端保持一致。 */
+const PROVIDER_BASE_URL_MAX = 2048;
+const PROVIDER_MODEL_MAX = 256;
+
+/** 保存前规范化：去空白、去掉 base URL 末尾的 `/`（与 Rust 端一致）。 */
+export function normalizeProviderProfile(profile: ProviderProfile): ProviderProfile {
+  return {
+    preset: profile.preset,
+    baseUrl: profile.baseUrl.trim().replace(/\/+$/, ""),
+    model: profile.model.trim(),
+    messageType: profile.messageType,
+  };
+}
+
+/**
+ * 供应商配置的前端校验（后端会再校验一次）：只给可读原因，不猜端点是否真实存在。
+ * 返回 null 表示通过。
+ */
+export function validateProviderProfile(profile: ProviderProfile): string | null {
+  const baseUrl = profile.baseUrl.trim();
+  if (!baseUrl) {
+    return "Base URL 不能为空（自定义供应商需填写完整端点，例如 https://api.example.com/v1）";
+  }
+  if (baseUrl.length > PROVIDER_BASE_URL_MAX) {
+    return `Base URL 过长（最多 ${PROVIDER_BASE_URL_MAX} 个字符）`;
+  }
+  if (!/^https?:\/\//i.test(baseUrl)) {
+    return `Base URL 必须以 http:// 或 https:// 开头：${baseUrl}`;
+  }
+  try {
+    new URL(baseUrl);
+  } catch {
+    return `Base URL 格式不正确：${baseUrl}`;
+  }
+  const model = profile.model.trim();
+  if (!model) {
+    return "模型 ID 不能为空（例如 qwen-flash / gpt-4o-mini / deepseek-chat）";
+  }
+  if (model.length > PROVIDER_MODEL_MAX) {
+    return `模型 ID 过长（最多 ${PROVIDER_MODEL_MAX} 个字符）`;
+  }
+  return null;
+}
+
+/**
+ * 读取活动供应商配置（#45 前置）。读取失败只给一次性提示，设置页其余部分照常可用；
+ * 界面在拿到配置前用百炼默认值当草稿。
+ */
+export async function loadProviderProfile(dispatch: Dispatch): Promise<void> {
+  try {
+    const profile = await invoke<ProviderProfile>("settings_provider_profile");
+    dispatch({ type: "set-provider-profile", profile });
+  } catch (error) {
+    dispatch({
+      type: "set-provider-profile-message",
+      message: {
+        tone: "error",
+        text: `读取供应商配置失败：${String(error)}`,
+      },
+    });
+  }
+}
+
+/**
+ * 保存活动供应商配置：先做前端校验（可读错误），再经 IPC 落 settings。
+ * 返回 true 表示保存成功（配置本身保留，不清空草稿）。
+ */
+export async function saveProviderProfile(
+  dispatch: Dispatch,
+  profile: ProviderProfile,
+): Promise<boolean> {
+  const normalized = normalizeProviderProfile(profile);
+  const invalid = validateProviderProfile(normalized);
+  if (invalid) {
+    dispatch({
+      type: "set-provider-profile-message",
+      message: { tone: "error", text: invalid },
+    });
+    return false;
+  }
+
+  dispatch({ type: "set-provider-profile-busy", busy: true });
+  try {
+    const saved = await invoke<ProviderProfile>("settings_save_provider_profile", {
+      profile: normalized,
+    });
+    dispatch({ type: "set-provider-profile", profile: saved });
+    dispatch({
+      type: "set-provider-profile-message",
+      message: {
+        tone: "ok",
+        text: `供应商配置已保存（${providerPreset(saved.preset).label} · ${saved.model}）`,
+      },
+    });
+    return true;
+  } catch (error) {
+    dispatch({
+      type: "set-provider-profile-message",
+      message: { tone: "error", text: `保存供应商配置失败：${String(error)}` },
+    });
+    return false;
+  } finally {
+    dispatch({ type: "set-provider-profile-busy", busy: false });
+  }
+}
 
 /**
  * 读取凭证区四行状态（#29）。核心库不可用时清空状态并给出一次性提示，
