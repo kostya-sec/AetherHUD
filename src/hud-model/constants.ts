@@ -1,26 +1,68 @@
-import type { BallSlot, KeyHint } from "./types";
+import type { BallSlot, KeyHint, TaxonomyL1 } from "./types";
 
 /**
- * Ball column order from the accepted #7 prototype:
- * search orb → L3 filter → five L1 slots → quick input → settings.
- * The search orb is rendered only while the search bar is collapsed.
+ * Ball column order (#17 §5.4 / PRD v2 §8):
+ * search orb (only while the search bar is collapsed) → L3 filter → five L1 balls
+ * (from the effective taxonomy) → quick input → settings.
  */
-export const BALL_SLOTS: readonly BallSlot[] = [
-  { id: "search", kind: "search", label: "全局搜索", placeholder: false },
-  { id: "l3-filter", kind: "l3-filter", label: "L3 标签筛选", placeholder: true },
-  { id: "l1-1", kind: "l1", label: "分类槽位 01", placeholder: true },
-  { id: "l1-2", kind: "l1", label: "分类槽位 02", placeholder: true },
-  { id: "l1-3", kind: "l1", label: "分类槽位 03", placeholder: true },
-  { id: "l1-4", kind: "l1", label: "分类槽位 04", placeholder: true },
-  { id: "l1-5", kind: "l1", label: "分类槽位 05", placeholder: true },
-  { id: "quick-add", kind: "quick-add", label: "快速录入", placeholder: true },
-  { id: "settings", kind: "settings", label: "全局设置", placeholder: true },
-];
+export const SEARCH_BALL: BallSlot = {
+  id: "search",
+  kind: "search",
+  label: "全局搜索",
+  placeholder: false,
+};
+
+export const L3_FILTER_BALL: BallSlot = {
+  id: "l3-filter",
+  kind: "l3-filter",
+  label: "L3 标签筛选",
+  placeholder: false,
+};
+
+export const QUICK_ADD_BALL: BallSlot = {
+  id: "quick-add",
+  kind: "quick-add",
+  label: "快速录入",
+  placeholder: true,
+};
+
+export const SETTINGS_BALL: BallSlot = {
+  id: "settings",
+  kind: "settings",
+  label: "全局设置",
+  placeholder: true,
+};
 
 /**
- * Bottom key hints for the two zones that exist in this scaffold. T14 replaces
- * this with the full five-zone + search-bubble model.
+ * Fallback slots while the shell has not delivered the effective taxonomy
+ * (plain-browser dev, or a failed core bootstrap). Labels stay neutral: the effective
+ * taxonomy is the single runtime source of L1 names (ADR-0001), so the fallback must
+ * not duplicate official names that would drift on a taxonomy upgrade.
  */
+export const PLACEHOLDER_L1_SLOTS: readonly BallSlot[] = [
+  "分类加载中",
+  "分类加载中",
+  "分类加载中",
+  "分类加载中",
+  "分类加载中",
+].map((label, index) => ({
+  id: `l1-placeholder-${index + 1}`,
+  kind: "l1" as const,
+  label,
+  placeholder: true,
+}));
+
+export function taxonomyBall(l1: TaxonomyL1): BallSlot {
+  return {
+    id: l1.id,
+    kind: "l1",
+    label: l1.name,
+    placeholder: false,
+    icon: l1.icon,
+    l1Id: l1.id,
+  };
+}
+
 export const SEARCH_KEY_HINTS: readonly KeyHint[] = [
   { keys: ["Esc"], label: "收起" },
   { keys: ["Tab"], label: "换区" },
@@ -35,3 +77,19 @@ export const BALL_KEY_HINTS: readonly KeyHint[] = [
   { keys: ["Tab"], label: "换区" },
   { keys: ["Esc"], label: "收起" },
 ];
+
+// #27 只有鼠标交互（键盘五区模型在 #38）：提示条只声明真正可用的键，
+// 避免先展示 ↑↓/←→/Space 这些尚未接线的键位。
+export const L2_KEY_HINTS: readonly KeyHint[] = [{ keys: ["Esc"], label: "收起" }];
+
+export const L3_KEY_HINTS: readonly KeyHint[] = [{ keys: ["Esc"], label: "收起" }];
+
+/** L3 标签条的**结构顺序**（#17 §5.6）：媒体 chip → 形态标签 → 特征标签。 */
+export const L3_MEDIA_CHIPS: readonly { readonly id: string; readonly name: string }[] = [
+  { id: "link", name: "网页" },
+  { id: "video", name: "视频" },
+  { id: "article", name: "文章" },
+];
+
+/** 启动提示条的展示时长（#13：不抢焦点的一次性提示，5 秒后自动关闭）。 */
+export const NOTICE_DURATION_MS = 5000;

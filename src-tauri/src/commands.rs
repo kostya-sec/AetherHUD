@@ -3,10 +3,13 @@
 
 use std::sync::Arc;
 
+use aether_core::navigation::HudNavigation;
+use aether_core::notice::HudNotice;
 use serde::Deserialize;
 use tauri::AppHandle;
 use tauri::Manager;
 
+use crate::runtime::CoreState;
 use crate::window::geometry::LogicalRect;
 use crate::window::{DismissReason, HudSnapshot, HudWindow, SummonReason};
 
@@ -45,6 +48,18 @@ pub fn set_hit_boxes(app: AppHandle, rects: Vec<CssRect>) -> Result<(), String> 
 #[tauri::command]
 pub fn hud_status(app: AppHandle) -> Result<HudSnapshot, String> {
     Ok(hud(&app)?.snapshot())
+}
+
+/// 生效分类树派生的球列/L2 面板数据（#27）。核心库启动失败时返回可读错误，前端保留占位球。
+#[tauri::command]
+pub fn hud_navigation(state: tauri::State<'_, CoreState>) -> Result<HudNavigation, String> {
+    state.navigation()
+}
+
+/// 取走启动期提示（覆盖层损坏等，5 秒提示条）；同一提示只返回一次。
+#[tauri::command]
+pub fn hud_take_notices(state: tauri::State<'_, CoreState>) -> Vec<HudNotice> {
+    state.take_notices()
 }
 
 /// Second launch without `--hidden`: summon the already running HUD (#12).

@@ -393,7 +393,7 @@ pub fn prepare_items(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aether_classifier::taxonomy::load_base_taxonomy;
+    use aether_classifier::taxonomy::{base_view_from_json, effective_view_from_json};
 
     const BASE: &str = r#"{
       "version": "1.1.0",
@@ -411,13 +411,7 @@ mod tests {
     }"#;
 
     fn tree() -> TaxonomyView {
-        let path = std::env::temp_dir().join(format!(
-            "aether-evalset-test-{}-{}.json",
-            std::process::id(),
-            fastrand::u64(..)
-        ));
-        std::fs::write(&path, BASE).unwrap();
-        load_base_taxonomy(&path).unwrap()
+        base_view_from_json(BASE).unwrap()
     }
 
     fn write_set(content: &str) -> PathBuf {
@@ -465,17 +459,7 @@ mod tests {
             {"id":"l1_tech","name":"03 技术与工程","children":[{"id":"l2_coding","name":"编程与低代码"}]}
           ]
         }"#;
-        let eff_path = std::env::temp_dir().join(format!(
-            "aether-evalset-eff-{}-{}.json",
-            std::process::id(),
-            fastrand::u64(..)
-        ));
-        std::fs::write(&eff_path, eff).unwrap();
-        let eff_tree = aether_classifier::taxonomy::load_effective_taxonomy(
-            &std::env::temp_dir().join("unused-base.json"),
-            Some(&eff_path),
-        )
-        .unwrap();
+        let eff_tree = effective_view_from_json(eff, None).unwrap();
         let _ = base;
         let content = format!("{}\n", item("l1_tech", "l2u_old", "visible"));
         let set = load_eval_set(&write_set(&content)).unwrap();

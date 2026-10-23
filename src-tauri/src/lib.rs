@@ -7,6 +7,7 @@ mod events;
 mod focus;
 mod hotkey;
 mod platform;
+mod runtime;
 mod startup;
 mod tray;
 mod window;
@@ -44,6 +45,8 @@ pub fn run() {
             commands::request_dismiss,
             commands::set_hit_boxes,
             commands::hud_status,
+            commands::hud_navigation,
+            commands::hud_take_notices,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AetherHUD");
@@ -61,6 +64,10 @@ fn setup(app: &mut tauri::App, launch_mode: LaunchMode) -> Result<(), Box<dyn st
 
     let hud = HudWindow::attach(app.handle().clone(), window, launch_mode);
     app.manage(Arc::clone(&hud));
+
+    // 领域核心（分类树合并、meta.taxonomy_version、HUD 导航数据）。失败不阻塞壳：
+    // 球列退回占位，命令返回可读错误（#27 验收：启动 fail-safe）。
+    app.manage(runtime::CoreState::bootstrap(app.handle()));
 
     // macOS: convert to an NSPanel and add the window_did_resign_key blur channel.
     // A failure is not fatal; the plain transparent window still works.

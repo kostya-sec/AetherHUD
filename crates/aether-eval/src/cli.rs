@@ -13,8 +13,10 @@ use aether_classifier::config::{load_few_shots, load_tag_pool};
 use aether_classifier::engine::ClassificationEngine;
 use aether_classifier::provider::{ChatClient, ProviderConfig};
 use aether_classifier::retry::RetryPolicy;
-use aether_classifier::taxonomy::{load_effective_taxonomy, EffectiveSource};
+use aether_classifier::taxonomy::EffectiveSource;
 use aether_classifier::{EntryForClassify, PromptConfig};
+use aether_core::adapters::StdFileSystem;
+use aether_core::taxonomy::load_exported_view;
 
 use crate::appdata::{resolve_data_dir, resolve_eval_set_path, SetKind};
 use crate::baseline::BASELINE_INDEX_FILE;
@@ -295,7 +297,8 @@ async fn run_eval(args: EvalArgs, data_dir: &Path) -> CliResult<()> {
         .effective_taxonomy
         .clone()
         .unwrap_or_else(|| data_dir.join("taxonomy.effective.json"));
-    let tree = load_effective_taxonomy(&base_taxonomy_path, Some(&effective_path))
+    // 生效树由应用启动时导出；缺失时回退底表（#18 §8.4）。评测不合并、不写盘。
+    let tree = load_exported_view(&StdFileSystem, &base_taxonomy_path, Some(&effective_path))
         .map_err(|e| e.to_string())?;
 
     let fewshot_path = args
@@ -797,6 +800,51 @@ mod tests {
         assert_eq!(stem, PathBuf::from("x/y"));
         let stem = resolve_report_stem(Some(Path::new("x/y")), Path::new("ignored"));
         assert_eq!(stem, PathBuf::from("x/y"));
+    }
+
+    #[test]
+    fn data_dir_effective_tree_drives_the_dual_version_report() {
+        let dir = std::env::temp_dir().join(format!(
+            "aether-eval-tax-{}-{}",
+            std::process::id(),
+            fastrand::u64(..)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("taxonomy.json"),
+            r#"{"version":"1.1.0","global_l3_tags":{"format_tags":[{"id":"tag_tool","name":"工具"}]},
+            "taxonomy":[
+              {"id":"l1_inbox","name":"00 未分类","children":[{"id":"l2_manual_review","name":"待人工归档"}]},
+              {"id":"l1_tech","name":"03 技术与工程","children":[{"id":"l2_coding","name":"编程与低代码"}]}
+            ]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("taxonomy.effective.json"),
+            r#"{"version":"1.1.0+u2","base_version":"1.1.0","merged_into":[],
+            "global_l3_tags":{"format_tags":[{"id":"tag_tool","name":"工具"}]},
+            "taxonomy":[
+              {"id":"l1_inbox","name":"00 未分类","children":[{"id":"l2_manual_review","name":"待人工归档"}]},
+              {"id":"l1_tech","name":"03 技术与工程","children":[
+                {"id":"l2_coding","name":"编程与低代码"},{"id":"l2u_new","name":"交易脚本"}
+              ]}
+            ]}"#,
+        )
+        .unwrap();
+
+        let base_path = resolve_base_taxonomy(None, &dir).unwrap();
+        assert_eq!(base_path, dir.join("taxonomy.json"));
+        let tree = load_exported_view(
+            &StdFileSystem,
+            &base_path,
+            Some(&dir.join("taxonomy.effective.json")),
+        )
+        .unwrap();
+
+        assert_eq!(tree.base_version, "1.1.0");
+        assert_eq!(tree.effective_version, "1.1.0+u2");
+        assert!(tree.is_normal_l2("l2u_new"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

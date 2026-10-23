@@ -1,12 +1,14 @@
-//! 分类树加载（底表 taxonomy.json ⊕ 覆盖层导出的 taxonomy.effective.json）。
+//! 生效分类树视图（全仓唯一实现）：分类器、评测工具与 aether-core 共用。
 //!
-//! 规格：#18 §3 / §8.4、#19 §5。评测工具读生效分类树（缺失时回退底表），
-//! prompt 注入时自建节点参与、停用 / 合并节点排除、l1_inbox 置末并标「仅用于弃权」。
+//! 本模块只做「分类树文档 → 视图」的解析、校验与派生索引，**不碰文件系统**：
+//! 底表读取、覆盖层合并与生效树导出在 aether-core::taxonomy（#27）。
+//! 规格：#18 §3 / §8.4、#19 §5。
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde_json::Value;
+use unicode_normalization::UnicodeNormalization;
 
 pub const L1_INBOX: &str = "l1_inbox";
 pub const L2_MANUAL_REVIEW: &str = "l2_manual_review";
@@ -23,6 +25,8 @@ pub enum L2Status {
 pub struct FormatTag {
     pub id: String,
     pub name: String,
+    /// 展示色（taxonomy.json 的可选字段）；分类不需要，HUD 的 L3 条使用。
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +43,7 @@ pub struct L2Node {
 pub struct L1Node {
     pub id: String,
     pub name: String,
+    pub icon: Option<String>,
     pub children: Vec<L2Node>,
 }
 
@@ -49,7 +54,7 @@ pub struct MergeMapping {
     pub at: Option<i64>,
 }
 
-/// 生效分类树的来源：独立文件（#18）或回退底表。
+/// 生效分类树的来源：独立导出文件（#18）或回退底表。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectiveSource {
     File,
@@ -77,31 +82,13 @@ pub struct TaxonomyView {
 
 #[derive(Debug, thiserror::Error)]
 pub enum TaxonomyError {
-    #[error("读取分类树失败（{path}）：{source}")]
-    Io {
-        path: String,
-        #[source]
-        source: std::io::Error,
-    },
-    #[error("解析分类树 JSON 失败（{path}）：{source}")]
+    #[error("解析分类树 JSON 失败：{source}")]
     Json {
-        path: String,
         #[source]
         source: serde_json::Error,
     },
     #[error("分类树结构非法：{0}")]
     Invalid(String),
-}
-
-fn read_json(path: &Path) -> Result<Value, TaxonomyError> {
-    let text = std::fs::read_to_string(path).map_err(|source| TaxonomyError::Io {
-        path: path.display().to_string(),
-        source,
-    })?;
-    serde_json::from_str(&text).map_err(|source| TaxonomyError::Json {
-        path: path.display().to_string(),
-        source,
-    })
 }
 
 fn as_str<'a>(v: &'a Value, key: &str, ctx: &str) -> Result<&'a str, TaxonomyError> {
@@ -110,6 +97,27 @@ fn as_str<'a>(v: &'a Value, key: &str, ctx: &str) -> Result<&'a str, TaxonomyErr
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| TaxonomyError::Invalid(format!("{ctx} 缺少字符串字段 {key}")))
+}
+
+/// L1/L2 名称的规范化比较 key（#18 §6.2）：NFKC、去首尾空白、连续空白折一、小写。
+///
+/// 分类树合并的撞名判定与升格表单的唯一性校验共用这一份实现。
+pub fn normalize_name(name: &str) -> String {
+    let nfkc: String = name.nfkc().collect();
+    let mut collapsed = String::new();
+    let mut last_space = false;
+    for ch in nfkc.trim().chars() {
+        if ch.is_whitespace() {
+            if !last_space {
+                collapsed.push(' ');
+                last_space = true;
+            }
+        } else {
+            collapsed.push(ch);
+            last_space = false;
+        }
+    }
+    collapsed.to_lowercase()
 }
 
 /// 生效版本形如 1.1.0+u3；底表版本取 + 之前的部分。
@@ -122,8 +130,9 @@ pub fn base_version_of(version: &str) -> String {
         .to_string()
 }
 
-pub fn load_base_taxonomy(path: &Path) -> Result<TaxonomyView, TaxonomyError> {
-    let doc = read_json(path)?;
+/// 从底表文档构造视图（底表视同回退来源，版本不带 +uN）。
+pub fn base_view_from_json(text: &str) -> Result<TaxonomyView, TaxonomyError> {
+    let doc: Value = serde_json::from_str(text).map_err(|source| TaxonomyError::Json { source })?;
     let version = as_str(&doc, "version", "taxonomy")?.to_string();
     build_view(
         &doc,
@@ -135,18 +144,14 @@ pub fn load_base_taxonomy(path: &Path) -> Result<TaxonomyView, TaxonomyError> {
     )
 }
 
-/// 读生效分类树：文件存在且可解析时使用，否则回退底表（#18 §8.4 / #14 §4.1）。
-pub fn load_effective_taxonomy(
-    base_path: &Path,
-    effective_path: Option<&Path>,
+/// 从生效分类树文档（taxonomy.effective.json 的格式）构造视图。
+///
+/// effective_path 只用于评测报告回显路径，视图本身不读文件。
+pub fn effective_view_from_json(
+    text: &str,
+    effective_path: Option<PathBuf>,
 ) -> Result<TaxonomyView, TaxonomyError> {
-    let Some(path) = effective_path else {
-        return load_base_taxonomy(base_path);
-    };
-    if !path.is_file() {
-        return load_base_taxonomy(base_path);
-    }
-    let doc = read_json(path)?;
+    let doc: Value = serde_json::from_str(text).map_err(|source| TaxonomyError::Json { source })?;
     let effective_version = as_str(&doc, "version", "taxonomy.effective")?.to_string();
     let base_version = doc
         .get("base_version")
@@ -160,7 +165,7 @@ pub fn load_effective_taxonomy(
         base_version,
         effective_version,
         EffectiveSource::File,
-        Some(path.to_path_buf()),
+        effective_path,
         merged,
     )
 }
@@ -215,6 +220,12 @@ fn build_view(
         if l1_names.contains_key(&id) {
             return Err(TaxonomyError::Invalid(format!("L1 id 重复：{id}")));
         }
+        let icon = l1
+            .get("icon")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
         l1_ids.push(id.clone());
         l1_names.insert(id.clone(), name.clone());
         let is_inbox = id == L1_INBOX;
@@ -278,6 +289,7 @@ fn build_view(
         l1s.push(L1Node {
             id,
             name,
+            icon,
             children: child_nodes,
         });
     }
@@ -310,6 +322,12 @@ fn build_view(
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_string(),
+                color: tag
+                    .get("color")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string),
             });
         }
     }
@@ -478,43 +496,29 @@ impl TaxonomyView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
-    fn write_tmp(name: &str, content: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "aether-tax-test-{}-{}",
-            std::process::id(),
-            fastrand::u64(..)
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join(name);
-        std::fs::write(&path, content).unwrap();
-        path
-    }
-
-    const BASE: &str = r#"{
+    const BASE: &str = r##"{
       "version": "1.1.0",
       "global_l3_tags": {"format_tags": [
-        {"id":"tag_tool","name":"工具"},{"id":"tag_tutorial","name":"教程"},
-        {"id":"tag_prompt","name":"提示词"},{"id":"tag_workflow","name":"工作流"},
-        {"id":"tag_asset","name":"素材/资源"}
+        {"id":"tag_tool","name":"工具","color":"#3B82F6"},{"id":"tag_tutorial","name":"教程","color":"#10B981"},
+        {"id":"tag_prompt","name":"提示词","color":"#8B5CF6"},{"id":"tag_workflow","name":"工作流","color":"#EC4899"},
+        {"id":"tag_asset","name":"素材/资源","color":"#F59E0B"}
       ]},
       "taxonomy": [
-        {"id":"l1_inbox","name":"00 未分类","children":[{"id":"l2_manual_review","name":"待人工归档","l3_preset_tags":[]}]},
-        {"id":"l1_tech","name":"03 技术与工程","children":[
+        {"id":"l1_inbox","name":"00 未分类","icon":"inbox","children":[{"id":"l2_manual_review","name":"待人工归档","l3_preset_tags":[]}]},
+        {"id":"l1_tech","name":"03 技术与工程","icon":"terminal","children":[
           {"id":"l2_coding","name":"编程与低代码","l3_preset_tags":["Cursor","Rust"]},
           {"id":"l2_prompt_agent","name":"提示工程与智能体","l3_preset_tags":["Coze"]}
         ]},
-        {"id":"l1_biz","name":"04 商业与认知","children":[
+        {"id":"l1_biz","name":"04 商业与认知","icon":"trending-up","children":[
           {"id":"l2_insight","name":"行业观察与研报","l3_preset_tags":[]}
         ]}
       ]
-    }"#;
+    }"##;
 
     #[test]
     fn base_loads_and_renders_inbox_last() {
-        let path = write_tmp("taxonomy.json", BASE);
-        let view = load_effective_taxonomy(&path, None).unwrap();
+        let view = base_view_from_json(BASE).unwrap();
         assert_eq!(view.base_version, "1.1.0");
         assert_eq!(view.effective_version, "1.1.0");
         assert_eq!(view.effective_source, EffectiveSource::BaseFallback);
@@ -522,6 +526,8 @@ mod tests {
         assert_eq!(view.normal_l2_ids().len(), 3);
         assert!(view.is_normal_l2("l2_coding"));
         assert!(!view.is_normal_l2("l2_manual_review"));
+        assert_eq!(view.l1s()[1].icon.as_deref(), Some("terminal"));
+        assert_eq!(view.format_tags()[0].color.as_deref(), Some("#3B82F6"));
         let tree = view.render_tree();
         assert!(
             tree.ends_with("l1_inbox 00 未分类（仅用于弃权）\n  · 待人工归档（l2_manual_review）")
@@ -532,7 +538,6 @@ mod tests {
 
     #[test]
     fn effective_tree_supports_self_built_disabled_and_merged() {
-        let base_path = write_tmp("base.json", BASE);
         let eff = r#"{
           "version": "1.1.0+u3",
           "base_version": "1.1.0",
@@ -550,11 +555,12 @@ mod tests {
             ]}
           ]
         }"#;
-        let eff_path = write_tmp("taxonomy.effective.json", eff);
-        let view = load_effective_taxonomy(&base_path, Some(&eff_path)).unwrap();
+        let path = PathBuf::from("/data/app/taxonomy.effective.json");
+        let view = effective_view_from_json(eff, Some(path.clone())).unwrap();
         assert_eq!(view.effective_version, "1.1.0+u3");
         assert_eq!(view.base_version, "1.1.0");
         assert_eq!(view.effective_source, EffectiveSource::File);
+        assert_eq!(view.effective_path.as_deref(), Some(path.as_path()));
         assert!(view
             .disabled_l2_ids()
             .contains(&"l2_prompt_agent".to_string()));
@@ -568,10 +574,16 @@ mod tests {
     }
 
     #[test]
-    fn missing_effective_file_falls_back_to_base() {
-        let base = write_tmp("taxonomy.json", BASE);
-        let view = load_effective_taxonomy(&base, Some(&base.with_file_name("nope.json"))).unwrap();
-        assert_eq!(view.effective_source, EffectiveSource::BaseFallback);
+    fn effective_version_falls_back_to_base_segment() {
+        let eff = BASE
+            .replace(r#""version": "1.1.0""#, r#""version": "1.1.0+u2""#)
+            .replace(
+                "\"global_l3_tags\"",
+                "\"merged_into\": [],\n      \"global_l3_tags\"",
+            );
+        let view = effective_view_from_json(&eff, None).unwrap();
+        assert_eq!(view.base_version, "1.1.0");
+        assert_eq!(view.effective_version, "1.1.0+u2");
     }
 
     #[test]
@@ -580,8 +592,25 @@ mod tests {
             "{\"id\":\"l2_insight\",\"name\":\"行业观察与研报\",\"l3_preset_tags\":[]}",
             "{\"id\":\"l2_coding\",\"name\":\"重复\",\"l3_preset_tags\":[]}",
         );
-        let path = write_tmp("taxonomy.json", &broken);
-        let err = load_base_taxonomy(&path).unwrap_err();
+        let err = base_view_from_json(&broken).unwrap_err();
         assert!(err.to_string().contains("L2 id 重复"));
+    }
+
+    #[test]
+    fn name_normalization_folds_width_case_and_whitespace() {
+        assert_eq!(normalize_name("  短视频   脚本 "), "短视频 脚本");
+        assert_eq!(normalize_name("Ｃｕｒｓｏｒ"), "cursor");
+        assert_eq!(normalize_name("Cursor"), "cursor");
+        assert_ne!(normalize_name("Cursor"), normalize_name("Cursor 2"));
+    }
+
+    #[test]
+    fn rejects_invalid_merged_into() {
+        let broken = BASE.replace(
+            "\"global_l3_tags\"",
+            "\"merged_into\": 42,\n      \"global_l3_tags\"",
+        );
+        let err = effective_view_from_json(&broken, None).unwrap_err();
+        assert!(err.to_string().contains("merged_into 必须是数组"));
     }
 }

@@ -44,6 +44,7 @@ AetherHUD/
 │   │   ├── platform.rs       # OS helpers: physical cursor position, main-thread hops
 │   │   ├── startup.rs        # Launch-mode parsing (manual launch vs --hidden resident)
 │   │   ├── events.rs         # Event names shared with the webview bridge
+│   │   ├── runtime.rs        # aether-core assembly: app_data_dir / base taxonomy path, core bootstrap, navigation & notice data
 │   │   └── commands.rs       # Thin IPC wrappers over aether-core / window controller
 │   ├── Cargo.toml
 │   └── tauri.conf.json

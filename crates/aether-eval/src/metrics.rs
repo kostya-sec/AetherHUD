@@ -563,7 +563,7 @@ mod tests {
     use aether_classifier::engine::{CallPurpose, CallRecord, ClassificationOutcome};
     use aether_classifier::provider::Usage;
     use aether_classifier::schema::Classification;
-    use aether_classifier::taxonomy::load_base_taxonomy;
+    use aether_classifier::taxonomy::base_view_from_json;
 
     const BASE: &str = r#"{
       "version": "1.1.0",
@@ -585,13 +585,7 @@ mod tests {
     }"#;
 
     fn tree() -> TaxonomyView {
-        let path = std::env::temp_dir().join(format!(
-            "aether-metrics-test-{}-{}.json",
-            std::process::id(),
-            fastrand::u64(..)
-        ));
-        std::fs::write(&path, BASE).unwrap();
-        load_base_taxonomy(&path).unwrap()
+        base_view_from_json(BASE).unwrap()
     }
 
     fn item(line: usize, l1: &str, l2: &str, difficulty: &str) -> RunItem {

@@ -123,6 +123,17 @@ fn char_len(s: &str) -> usize {
     s.chars().count()
 }
 
+/// 分类建议 / 升格表单的 L2 名字规则（#18 §6.2）：trim 后 2~10 字符，
+/// 禁控制字符、换行、斜杠。覆盖层启动校验共用这一份实现，避免两处规则漂移。
+pub fn is_valid_new_l2_name(name: &str) -> bool {
+    let trimmed = name.trim();
+    let len = char_len(trimmed);
+    (NEW_L2_NAME_MIN_CHARS..=NEW_L2_NAME_MAX_CHARS).contains(&len)
+        && !trimmed
+            .chars()
+            .any(|c| c.is_control() || c == '/' || c == '\\')
+}
+
 /// 唯一入口：解析 + 分层校验 + 归一化。
 pub fn validate_classification(
     raw: &str,
@@ -402,11 +413,7 @@ fn normalize_suggestion(
                 .map(str::trim)
                 .unwrap_or_default();
             let parent_ok = tree.is_normal_l1(parent);
-            let name_len = char_len(name);
-            let name_ok = (NEW_L2_NAME_MIN_CHARS..=NEW_L2_NAME_MAX_CHARS).contains(&name_len)
-                && !name
-                    .chars()
-                    .any(|c| c.is_control() || c == '/' || c == '\\');
+            let name_ok = is_valid_new_l2_name(name);
             if parent_ok && name_ok {
                 suggestion.new_l2 = Some(NewL2 {
                     parent_l1_id: parent.to_string(),
@@ -430,8 +437,7 @@ fn normalize_suggestion(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::taxonomy::load_base_taxonomy;
-    use std::path::PathBuf;
+    use crate::taxonomy::base_view_from_json;
 
     const BASE: &str = r#"{
       "version": "1.1.0",
@@ -453,13 +459,7 @@ mod tests {
     }"#;
 
     fn tree() -> TaxonomyView {
-        let path: PathBuf = std::env::temp_dir().join(format!(
-            "aether-schema-test-{}-{}.json",
-            std::process::id(),
-            fastrand::u64(..)
-        ));
-        std::fs::write(&path, BASE).unwrap();
-        load_base_taxonomy(&path).unwrap()
+        base_view_from_json(BASE).unwrap()
     }
 
     fn codes(e: &ValidationError) -> Vec<ValidationCode> {
@@ -547,6 +547,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out.classification.feature_tags, vec!["Cursor"]);
+    }
+
+    #[test]
+    fn l2_name_rule_is_shared_and_enforces_2_to_10_chars() {
+        assert!(is_valid_new_l2_name("交易脚本"));
+        assert!(is_valid_new_l2_name(" 交易脚本 "));
+        assert!(!is_valid_new_l2_name("短"));
+        assert!(!is_valid_new_l2_name(&"长".repeat(11)));
+        assert!(!is_valid_new_l2_name("a/b"));
+        assert!(!is_valid_new_l2_name("a\\b"));
+        assert!(!is_valid_new_l2_name("a\nb"));
     }
 
     #[test]

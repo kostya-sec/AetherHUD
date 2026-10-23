@@ -1,64 +1,16 @@
-//! app_data_dir 解析（Tauri 语义的本地替代实现）。
+//! app_data_dir 解析：与 Tauri 壳共用 aether-core::paths 的同一份实现。
 //!
-//! 正式 Tauri 应用的 app_data_dir = 平台数据目录 / identifier（#10 §2）；
-//! 仓库尚无 src-tauri，本工具先按平台数据目录 / AetherHUD 落盘，可用
-//! --data-dir 或 AETHER_DATA_DIR 覆盖。标识符落地后应改为读取 tauri 路径。
+//! 正式应用的 app_data_dir = 平台数据目录 / identifier（#10 §2）；评测 CLI 与
+//! 校验脚本用 --data-dir 或 AETHER_DATA_DIR 指向同一目录（仓库内本地数据在 .local/）。
 
 use std::path::{Path, PathBuf};
 
-pub const DEFAULT_APP_DIR_NAME: &str = "AetherHUD";
-
 pub fn resolve_data_dir(explicit: Option<&Path>) -> PathBuf {
-    if let Some(path) = explicit {
-        return path.to_path_buf();
-    }
-    if let Some(env) = std::env::var_os("AETHER_DATA_DIR") {
-        let path = PathBuf::from(env);
-        if !path.as_os_str().is_empty() {
-            return path;
-        }
-    }
-    default_data_dir()
+    aether_core::paths::resolve_app_data_dir(explicit)
 }
 
 pub fn default_data_dir() -> PathBuf {
-    platform_data_base().join(DEFAULT_APP_DIR_NAME)
-}
-
-#[cfg(target_os = "windows")]
-fn platform_data_base() -> PathBuf {
-    if let Some(appdata) = std::env::var_os("APPDATA") {
-        return PathBuf::from(appdata);
-    }
-    home_dir()
-}
-
-#[cfg(target_os = "macos")]
-fn platform_data_base() -> PathBuf {
-    home_dir().join("Library/Application Support")
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-fn platform_data_base() -> PathBuf {
-    if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
-        return PathBuf::from(xdg);
-    }
-    home_dir().join(".local/share")
-}
-
-#[cfg(any(target_os = "windows", target_os = "macos"))]
-fn home_dir() -> PathBuf {
-    std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
+    aether_core::paths::resolve_app_data_dir(None)
 }
 
 /// 解析评测集文件：data_dir/eval/sets/&lt;version&gt;.jsonl，

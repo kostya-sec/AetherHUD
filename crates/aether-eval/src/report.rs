@@ -984,13 +984,7 @@ mod tests {
     }
 
     fn dummy_tree() -> aether_classifier::taxonomy::TaxonomyView {
-        let path = std::env::temp_dir().join(format!(
-            "aether-report-test-{}-{}.json",
-            std::process::id(),
-            fastrand::u64(..)
-        ));
-        std::fs::write(
-            &path,
+        aether_classifier::taxonomy::base_view_from_json(
             r#"{"version":"1.1.0","global_l3_tags":{"format_tags":[{"id":"tag_tool","name":"工具"}]},
             "taxonomy":[
               {"id":"l1_inbox","name":"00 未分类","children":[{"id":"l2_manual_review","name":"待人工归档"}]},
@@ -998,8 +992,7 @@ mod tests {
               {"id":"l1_biz","name":"04 商业与认知","children":[{"id":"l2_insight","name":"行业观察与研报"}]}
             ]}"#,
         )
-        .unwrap();
-        aether_classifier::taxonomy::load_base_taxonomy(&path).unwrap()
+        .unwrap()
     }
 
     fn params() -> ReportParams {
@@ -1089,6 +1082,11 @@ mod tests {
         assert!(md.contains("错例 Top 20"));
         assert!(md.contains("基线对比"));
         assert!(md.contains("评测集组成"));
+        // #27：报告必须同时回显底表版本与生效分类树版本（#18 §8.4）。
+        assert!(md.contains("taxonomy 底表版本"));
+        assert!(md.contains("1.1.0"));
+        assert!(md.contains("taxonomy 生效版本"));
+        assert!(md.contains("1.1.0+u0"));
         let json = build_json(&ctx, &report_paths(Path::new("x/report")));
         assert_eq!(json["kind"], "eval");
         assert_eq!(json["split"], "visible");

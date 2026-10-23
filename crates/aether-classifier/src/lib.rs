@@ -1,7 +1,7 @@
 //! AetherHUD 分类路径（#19 / #14 施工对象）。
 //!
 //! 本 crate 是分类器与评测工具的唯一实现：
-//! - 分类树：底表 + 生效树加载与 prompt 注入（taxonomy）
+//! - 分类树视图：文档解析、校验与 prompt 注入（taxonomy；文件读取与合并见 aether-core）
 //! - prompt 组装：定稿 V-C4（prompt）
 //! - 输出校验与归一化（schema）
 //! - OpenAI 兼容 provider（provider）与 #11 重试策略（retry）
@@ -31,6 +31,6 @@ pub use schema::{
     ValidationIssue, ValidationOutcome,
 };
 pub use taxonomy::{
-    load_base_taxonomy, load_effective_taxonomy, EffectiveSource, TaxonomyView, L1_INBOX,
-    L2_MANUAL_REVIEW,
+    base_version_of, base_view_from_json, effective_view_from_json, EffectiveSource, TaxonomyView,
+    L1_INBOX, L2_MANUAL_REVIEW,
 };

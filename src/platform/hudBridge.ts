@@ -7,6 +7,7 @@ import {
   type HudStore,
   type KeyDownLike,
 } from "../hud-model";
+import { showStartupNotice } from "./navigation";
 
 /** Shell → webview events. Keep in sync with src-tauri/src/events.rs. */
 export const SUMMON_EVENT = "hud://summon";
@@ -69,7 +70,11 @@ export function dismissHud(): void {
  */
 export async function connectHudBridge(store: HudStore): Promise<() => void> {
   const subscriptions: Promise<UnlistenFn>[] = [
-    listen(SUMMON_EVENT, () => store.dispatch({ type: "summon" })),
+    listen(SUMMON_EVENT, () => {
+      // 先回到 S0，再取启动期提示：顺序反了会被 summon 重置清掉（提示条 5 秒后自动关闭）。
+      store.dispatch({ type: "summon" });
+      void showStartupNotice(store);
+    }),
     listen(DISMISS_EVENT, () => store.dispatch({ type: "dismiss-start" })),
   ];
 

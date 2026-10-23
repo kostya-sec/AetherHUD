@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  BALL_SLOTS,
   createDefaultHudState,
   createHudStore,
   hudReducer,
@@ -42,7 +41,7 @@ describe("HUD 默认态（S0）", () => {
       "quick-add",
       "settings",
     ]);
-    expect(selectVisibleBallSlots(state)).toHaveLength(BALL_SLOTS.length);
+    expect(selectVisibleBallSlots(state)).toHaveLength(9);
   });
 
   it("唤出重置到默认态：清空查询、收起搜索框，且不请求聚焦", () => {

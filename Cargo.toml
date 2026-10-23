@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/aether-classifier", "crates/aether-eval", "src-tauri"]
+members = ["crates/aether-classifier", "crates/aether-core", "crates/aether-eval", "src-tauri"]
 
 [workspace.package]
 version = "0.1.0"

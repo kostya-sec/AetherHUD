@@ -77,6 +77,8 @@
 | 前端 → Rust | `request_dismiss` | Esc 收起 |
 | 前端 → Rust | `set_hit_boxes` | 交互区矩形（CSS px，窗口相对） |
 | 前端 → Rust | `hud_status` | 阶段、启动形态、热键注册状态 |
+| 前端 → Rust | `hud_navigation` | 生效分类树投影：5 个 L1 + L2 + 形态标签（#27） |
+| 前端 → Rust | `hud_take_notices` | 取启动期提示（覆盖层损坏 / 核心库未启动），每次取走即清空（#27） |
 | Rust → 前端（事件顺序） | 唤出：focus 先于 `hud://summon` | 窗口先拿到系统焦点，键盘立即可用（2026-10-23 起不再自动聚焦搜索框） |
 
 ## 11. 验证

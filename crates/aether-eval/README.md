@@ -10,18 +10,21 @@
 ```text
 crates/
 ├── aether-classifier/   # 生产分类路径（评测与分类 worker 共用）：
-│                        #   分类树注入 / V-C4 prompt / 输出校验 / provider / #11 重试 / 端到端引擎
+│                        #   分类树视图 / V-C4 prompt / 输出校验 / provider / #11 重试 / 端到端引擎
+├── aether-core/         # 应用核心库：分类树合并与导出、存储、路径、适配器
 └── aether-eval/         # 本 crate：评测、指标、报告、基线、纠偏候选、few-shot 查重
 ```
 
 “复用生产分类路径”的落点：`aether_classifier::prompt::build_classification_messages`、
 `aether_classifier::schema::validate_classification` 与 `ClassificationEngine::classify`；
-评测不另写 prompt 或校验。未来分类 worker 直接依赖 `aether-classifier` 即可保持同一路径。
+评测不另写 prompt 或校验。生效分类树的读取走 `aether_core::taxonomy::load_exported_view`
+（缺失回退底表），与生产启动共用同一份加载实现。
 
 ## 1. 本地数据目录
 
-默认 `app_data_dir` 按平台数据目录 / `AetherHUD` 解析；开发期用 `--data-dir` 或
-`AETHER_DATA_DIR` 指向任何符合下列结构的目录（仓库内本地数据在 `.local/`，已 gitignore）：
+默认 `app_data_dir` 与 Tauri 壳共用 `aether_core::paths`：平台数据目录 /
+`io.github.kostya-sec.aetherhud`；开发期用 `--data-dir` 或 `AETHER_DATA_DIR` 指向任何符合
+下列结构的目录（仓库内本地数据在 `.local/`，已 gitignore）：
 
 ```text
 <data_dir>/
@@ -123,8 +126,8 @@ target/release/aether-eval.exe dedupe \
 
 ## 5. 实现边界与已知简化
 
-- `app_data_dir` 目前按“平台数据目录 / AetherHUD”解析，待 `src-tauri` 脚手架落地后改为
-  Tauri 路径（identifier 确定后统一）。
+- `app_data_dir` 已与 Tauri 壳共用 `aether_core::paths`（identifier
+  `io.github.kostya-sec.aetherhud`）；`AETHER_DATA_DIR` 可覆盖壳与 CLI 两侧。
 - 网络错误按可重试处理并消耗 attempts；#11 的“断网挂起、不消耗 attempts”用于生产 worker，
   评测是单次本地运行，未实现离线挂起。
 - 特征标签离谱率依赖人工回填 `feature-review.jsonl`，本工具不自动判定。

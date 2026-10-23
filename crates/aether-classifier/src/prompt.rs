@@ -360,7 +360,7 @@ mod tests {
     use super::*;
     use crate::entry::EntryForClassify;
     use crate::schema::Classification;
-    use crate::taxonomy::load_base_taxonomy;
+    use crate::taxonomy::base_view_from_json;
 
     const BASE: &str = r#"{
       "version": "1.1.0",
@@ -382,13 +382,7 @@ mod tests {
     }"#;
 
     fn tree() -> TaxonomyView {
-        let path = std::env::temp_dir().join(format!(
-            "aether-prompt-test-{}-{}.json",
-            std::process::id(),
-            fastrand::u64(..)
-        ));
-        std::fs::write(&path, BASE).unwrap();
-        load_base_taxonomy(&path).unwrap()
+        base_view_from_json(BASE).unwrap()
     }
 
     fn fewshot(entry_id: &str, title: &str, l1: &str, l2: &str) -> FewShotExample {
