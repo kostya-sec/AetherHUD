@@ -7,6 +7,11 @@
 
 use tauri::{AppHandle, WebviewWindow};
 
+// `WebviewWindow::app_handle` comes from the `Manager` trait; only the macOS branch
+// of `capture` uses it, so keep the import out of the other builds.
+#[cfg(target_os = "macos")]
+use tauri::Manager;
+
 /// Opaque reference to the previously foreground application.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PreviousApp {

@@ -575,7 +575,7 @@ pub fn request_pending_summon() {
 /// macOS: converts the main window into an NSPanel (called from setup).
 #[cfg(target_os = "macos")]
 pub fn install_panel(hud: &Arc<HudWindow>) -> tauri::Result<()> {
-    panel::install(hud.window.clone(), Arc::clone(hud))
+    panel::install(&hud.window, Arc::clone(hud))
 }
 
 /// Periodically ticks the HUD: blur grace and click-through hit testing.

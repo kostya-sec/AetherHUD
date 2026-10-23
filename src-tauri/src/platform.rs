@@ -12,8 +12,6 @@ where
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static,
 {
-    use tauri::Manager;
-
     if objc2::MainThreadMarker::new().is_some() {
         return Some(task());
     }
