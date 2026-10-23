@@ -214,9 +214,9 @@ pub enum StorageError {
     #[error("数据库连接锁已中毒")]
     Poisoned,
     #[error(
-        "检测到旧的开发期 v1 数据库（缺少 entries 等表）：v1 尚未发布，请删除该 aether.db（连同 -wal/-shm）后重启"
+        "检测到旧的开发期 v1 数据库（缺少 entries 等表）：{path}\nv1 尚未发布，请删除该文件（连同同目录的 aether.db-wal / aether.db-shm）后重启"
     )]
-    StaleDevelopmentDatabase,
+    StaleDevelopmentDatabase { path: std::path::PathBuf },
 }
 
 pub struct Database {
@@ -239,7 +239,9 @@ impl Database {
         if !schema_is_complete(&connection).map_err(StorageError::Open)? {
             // #27 的临时 v1 只有 meta；v1 尚未发布，直接给出可操作错误而不是让
             // 后续 INSERT 报 "no such table: entries"。
-            return Err(StorageError::StaleDevelopmentDatabase);
+            return Err(StorageError::StaleDevelopmentDatabase {
+                path: path.to_path_buf(),
+            });
         }
         Ok(Self {
             connection: Mutex::new(connection),
@@ -1027,7 +1029,9 @@ mod tests {
         }
 
         match Database::open(&db_path) {
-            Err(StorageError::StaleDevelopmentDatabase) => {}
+            Err(StorageError::StaleDevelopmentDatabase { path }) => {
+                assert_eq!(path, db_path);
+            }
             other => panic!(
                 "旧的开发库应给出 StaleDevelopmentDatabase，实际：{}",
                 match other {
