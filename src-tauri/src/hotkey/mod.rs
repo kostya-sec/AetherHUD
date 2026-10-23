@@ -294,8 +294,11 @@ mod tests {
 
     #[test]
     fn the_failure_message_names_the_hotkey_the_reason_and_the_tray_fallback() {
+        // The display form is platform dependent (macOS renders Option as ⌥), so derive
+        // the expected fragment instead of hard-coding the Windows spelling.
+        let expected_display = display_accelerator("Alt+`");
         let message = registration_failure_message("Alt+`", "already registered");
-        assert!(message.contains("Alt + `"));
+        assert!(message.contains(&expected_display));
         assert!(message.contains("already registered"));
         assert!(message.contains("托盘"));
     }
